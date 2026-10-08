@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: funnel-runtime
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    disk:
+      name: funnel-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DB_FILE
+        value: /data/funnel.sqlite
+      - key: ADMIN_TOKEN
+        sync: false
