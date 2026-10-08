@@ -12,7 +12,8 @@ services:
       PORT: "3000"
       DB_FILE: /data/funnel.sqlite
       CONFIGS_DIR: /app/configs
-      # ADMIN_TOKEN: change-me   # uncomment to protect /admin and /dashboard
+      # set in .env next to this file (gitignored); protects /admin, /dashboard and their APIs
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
     volumes:
       - funnel-data:/data
     healthcheck:
