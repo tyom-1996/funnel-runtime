@@ -1,0 +1,26 @@
+services:
+  app:
+    build: .
+    image: funnel-runtime:latest
+    container_name: funnel-runtime
+    restart: unless-stopped
+    # only reachable from the host; nginx in front terminates TLS for https://zerdani.com
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DB_FILE: /data/funnel.sqlite
+      CONFIGS_DIR: /app/configs
+      # ADMIN_TOKEN: change-me   # uncomment to protect /admin and /dashboard
+    volumes:
+      - funnel-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  funnel-data:

@@ -1,5 +1,13 @@
-# hosting / server-local, not part of the project
+# hosting / server-local (the repo lives in a HestiaCP user home), not part of the project
 conf/
+web/
+mail/
+tmp/
+.ssh/
+.bash_history
+.bash_logout
+.bashrc
+.profile
 zerdani.zip
 *.zip
 
