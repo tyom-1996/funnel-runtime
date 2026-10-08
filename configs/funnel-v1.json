@@ -1,0 +1,265 @@
+{
+  "funnelId": "team-workflow-audit",
+  "version": "v1",
+  "status": "published",
+  "name": "Team Workflow Audit",
+  "description": "Six-question audit that recommends a workflow playbook for a team.",
+  "settings": {
+    "persistAnswers": true,
+    "sessionTtlHours": 72,
+    "storeRawAnswers": false,
+    "progress": { "excludeTypes": ["info", "result"] }
+  },
+  "experiment": {
+    "id": "exp-order-and-copy-v1",
+    "description": "A: neutral copy, team size first. B: work-mode questions first, benefit-led copy, 30-day plan CTA.",
+    "overrideQueryParam": "variant",
+    "variants": [
+      {
+        "id": "A",
+        "weight": 50,
+        "stepSequence": ["intro", "team_size", "work_mode", "office_days", "priorities", "tool_count", "result"]
+      },
+      {
+        "id": "B",
+        "weight": 50,
+        "stepSequence": ["intro", "work_mode", "office_days", "team_size", "priorities", "tool_count", "result"],
+        "stepOverrides": {
+          "intro": {
+            "title": "Get your team's 30-day workflow plan",
+            "body": "Answer 5 quick questions and we'll build a plan tailored to how your team actually works. Takes about a minute.",
+            "ctaLabel": "Build my plan"
+          },
+          "work_mode": {
+            "title": "Where does your team get work done?",
+            "subtitle": "This shapes the whole plan, so we ask it first."
+          },
+          "priorities": {
+            "title": "What should your plan optimise for?",
+            "subtitle": "Pick up to three. We'll weight recommendations accordingly."
+          },
+          "tool_count": {
+            "title": "How many tools does the team touch on a normal day?",
+            "hint": "Chat, docs, tickets, CI, dashboards… rough count is fine."
+          }
+        },
+        "resultOverrides": {
+          "*": {
+            "cta": { "label": "Get my 30-day plan" }
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "intro",
+      "type": "info",
+      "title": "Team Workflow Audit",
+      "body": "Five short questions about how your team works. At the end you get a playbook recommendation. No account needed.",
+      "ctaLabel": "Start"
+    },
+    {
+      "id": "team_size",
+      "type": "number",
+      "title": "How many people are on your team?",
+      "hint": "Count everyone who ships work together, including contractors.",
+      "placeholder": "e.g. 12",
+      "unit": "people",
+      "validation": {
+        "required": true,
+        "integer": true,
+        "min": 1,
+        "max": 500,
+        "messages": {
+          "required": "Please enter your team size",
+          "integer": "Use a whole number",
+          "min": "A team has at least one person",
+          "max": "For teams above 500 please contact us directly"
+        }
+      }
+    },
+    {
+      "id": "work_mode",
+      "type": "single-select",
+      "title": "How does your team work?",
+      "options": [
+        { "id": "remote", "label": "Fully remote", "description": "No shared office" },
+        { "id": "hybrid", "label": "Hybrid", "description": "Some days in the office" },
+        { "id": "office", "label": "Office-first", "description": "Most days on site" }
+      ],
+      "validation": {
+        "required": true,
+        "messages": { "required": "Choose the option that fits best" }
+      }
+    },
+    {
+      "id": "office_days",
+      "type": "number",
+      "title": "How many days a week is the team in the office?",
+      "placeholder": "1–5",
+      "unit": "days",
+      "visibleWhen": { "op": "in", "field": "work_mode", "value": ["hybrid", "office"] },
+      "validation": {
+        "required": true,
+        "integer": true,
+        "min": 1,
+        "max": 5,
+        "messages": {
+          "required": "Enter the number of office days",
+          "min": "At least 1 day — otherwise pick “Fully remote”",
+          "max": "A work week has 5 days"
+        }
+      }
+    },
+    {
+      "id": "priorities",
+      "type": "multi-select",
+      "title": "What matters most right now?",
+      "subtitle": "Pick one to three.",
+      "options": [
+        { "id": "speed", "label": "Shipping faster" },
+        { "id": "quality", "label": "Fewer defects" },
+        { "id": "cost", "label": "Lower tooling cost" },
+        { "id": "compliance", "label": "Compliance & audit readiness" },
+        { "id": "collaboration", "label": "Better collaboration" }
+      ],
+      "validation": {
+        "required": true,
+        "minSelections": 1,
+        "maxSelections": 3,
+        "messages": {
+          "required": "Pick at least one priority",
+          "minSelections": "Pick at least one priority",
+          "maxSelections": "Please pick no more than three"
+        }
+      }
+    },
+    {
+      "id": "tool_count",
+      "type": "number",
+      "title": "How many tools does your team use daily?",
+      "hint": "Chat, docs, task tracker, CI, dashboards…",
+      "placeholder": "e.g. 7",
+      "unit": "tools",
+      "validation": {
+        "required": true,
+        "integer": true,
+        "min": 0,
+        "max": 50,
+        "messages": {
+          "required": "Give us a rough number",
+          "max": "More than 50? Let's talk."
+        }
+      }
+    },
+    {
+      "id": "result",
+      "type": "result",
+      "title": "Your recommendation"
+    }
+  ],
+  "results": [
+    {
+      "id": "remote_tool_sprawl",
+      "title": "Remote team, too many tools",
+      "body": "Your team is fully remote and juggles a lot of tools. Context switching is probably your biggest hidden cost.",
+      "highlights": [
+        "Consolidate chat, docs and tasks into at most three tools",
+        "Introduce a written weekly plan instead of status meetings",
+        "Set a single source of truth for decisions"
+      ],
+      "cta": { "label": "See the consolidation playbook", "url": "#playbook/remote-tool-sprawl" }
+    },
+    {
+      "id": "remote_async",
+      "title": "Remote-first, async-ready",
+      "body": "A fully remote team with a lean toolset. Your leverage is in async rituals and written communication.",
+      "highlights": [
+        "Move status updates to written async check-ins",
+        "Define response-time expectations per channel",
+        "Record decisions in one searchable place"
+      ],
+      "cta": { "label": "See the async playbook", "url": "#playbook/remote-async" }
+    },
+    {
+      "id": "office_first",
+      "title": "Office-first team",
+      "body": "Your team spends most of the week together. Protect focus time and make the in-office days count.",
+      "highlights": [
+        "Cluster meetings into two office days",
+        "Introduce no-meeting focus blocks",
+        "Keep a written record for the days people are out"
+      ],
+      "cta": { "label": "See the office playbook", "url": "#playbook/office-first" }
+    },
+    {
+      "id": "compliance_focus",
+      "title": "Compliance-driven workflow",
+      "body": "Audit readiness is one of your priorities. Your workflow should produce evidence as a by-product of normal work.",
+      "highlights": [
+        "Make approvals explicit in the task tracker",
+        "Automate change logs from version control",
+        "Review access rights quarterly"
+      ],
+      "cta": { "label": "See the compliance playbook", "url": "#playbook/compliance" }
+    },
+    {
+      "id": "balanced_team",
+      "title": "Balanced hybrid team",
+      "body": "No single bottleneck stands out. Small, consistent improvements to rituals will give you the most return.",
+      "highlights": [
+        "Agree on which days are for collaboration and which for focus",
+        "Run a monthly tooling review",
+        "Keep decisions written and searchable"
+      ],
+      "cta": { "label": "See the hybrid playbook", "url": "#playbook/balanced" }
+    }
+  ],
+  "resultRules": [
+    {
+      "id": "remote-many-tools",
+      "when": {
+        "op": "all",
+        "conditions": [
+          { "op": "eq", "field": "work_mode", "value": "remote" },
+          { "op": "gte", "field": "tool_count", "value": 8 }
+        ]
+      },
+      "resultId": "remote_tool_sprawl"
+    },
+    {
+      "id": "remote",
+      "when": { "op": "eq", "field": "work_mode", "value": "remote" },
+      "resultId": "remote_async"
+    },
+    {
+      "id": "office-heavy",
+      "when": {
+        "op": "all",
+        "conditions": [
+          { "op": "in", "field": "work_mode", "value": ["hybrid", "office"] },
+          { "op": "gte", "field": "office_days", "value": 4 }
+        ]
+      },
+      "resultId": "office_first"
+    },
+    {
+      "id": "compliance",
+      "when": { "op": "contains", "field": "priorities", "value": "compliance" },
+      "resultId": "compliance_focus"
+    }
+  ],
+  "defaultResultId": "balanced_team",
+  "events": {
+    "allowed": [
+      "session_started",
+      "step_viewed",
+      "answer_submitted",
+      "step_completed",
+      "back_clicked",
+      "result_viewed",
+      "cta_clicked"
+    ]
+  }
+}
