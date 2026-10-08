@@ -34,3 +34,7 @@ data/
 .DS_Store
 coverage/
 .vite/
+
+# task statement from HR (local copy)
+*.txt
+!packages/**/*.txt
