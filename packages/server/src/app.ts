@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'node:fs';
 import path from 'node:path';
 import { ZodError } from 'zod';
+import { versionKey } from '@funnel/shared';
 import { openDb, type Db } from './db.js';
 import { HttpError } from './errors.js';
 import { VersionService } from './versions.js';
@@ -138,7 +139,7 @@ export function createApp(opts: AppOptions): AppContext {
     requireAdmin,
     wrap((req, res) => {
       const config = versions.create(req.body);
-      res.status(201).json(versions.summary(config.version));
+      res.status(201).json(versions.summary(versionKey(config)));
     }),
   );
 
@@ -231,7 +232,7 @@ export function bootstrapConfigs(versions: VersionService, dir: string) {
     try {
       const raw = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
       const config = versions.ensure(raw);
-      if (raw.status === 'published' && !publishedCandidate) publishedCandidate = config.version;
+      if (raw.status === 'published' && !publishedCandidate) publishedCandidate = versionKey(config);
     } catch (e) {
       console.warn(`[bootstrap] skipping ${f}: ${(e as Error).message}`);
     }

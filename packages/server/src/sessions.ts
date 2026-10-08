@@ -7,6 +7,7 @@ import {
   validateAnswer,
   normalizeAnswer,
   UtmSchema,
+  versionKey,
   type Answers,
   type SessionResponse,
   type Utm,
@@ -48,16 +49,16 @@ export class SessionService {
 
     let variantId: string;
     let source: 'assigned' | 'override' = 'assigned';
-    if (input.variantOverride && config.experiment.variants.some((v) => v.id === input.variantOverride)) {
+    if (input.variantOverride && input.variantOverride in config.experiment.variants) {
       variantId = input.variantOverride;
       source = 'override';
     } else {
-      variantId = pickVariant(config, this.random).id;
+      variantId = pickVariant(config, this.random);
     }
 
     const id = randomUUID();
     const created = nowIso();
-    const expires = new Date(Date.now() + config.settings.sessionTtlHours * 3600 * 1000).toISOString();
+    const expires = new Date(Date.now() + config.session.ttlHours * 3600 * 1000).toISOString();
     const firstStep = resolveFunnel(config, variantId).steps[0]?.id ?? null;
 
     this.db
@@ -65,7 +66,7 @@ export class SessionService {
         `INSERT INTO sessions(session_id, funnel_version, variant, variant_source, current_step_id, answers_json, utm_json, created_at, updated_at, expires_at)
          VALUES (?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)`,
       )
-      .run(id, config.version, variantId, source, firstStep, JSON.stringify(utm), created, created, expires);
+      .run(id, versionKey(config), variantId, source, firstStep, JSON.stringify(utm), created, created, expires);
 
     return this.get(id);
   }
@@ -125,7 +126,7 @@ export class SessionService {
     const effective = pruneAnswers(funnel, current);
     this.db
       .prepare('UPDATE sessions SET answers_json = ?, current_step_id = ?, updated_at = ? WHERE session_id = ?')
-      .run(JSON.stringify(config.settings.persistAnswers ? effective : {}), currentStepId, nowIso(), id);
+      .run(JSON.stringify(config.session.persistAnswers ? effective : {}), currentStepId, nowIso(), id);
 
     return this.get(id);
   }

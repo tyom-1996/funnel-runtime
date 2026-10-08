@@ -1,394 +1,663 @@
 {
-  "funnelId": "team-workflow-audit",
-  "version": "v3",
+  "schemaVersion": "1.0",
+  "funnelId": "workstyle-planner",
+  "version": 3,
   "status": "draft",
-  "name": "Team Workflow Audit",
-  "description": "Iteration 2: compliance branch, meeting load question, tool_count dropped for variant B, expandable recommendation.",
-  "settings": {
+  "locale": "en-AU",
+  "title": "Find your team's operating style",
+  "description": "A fictional recommendation funnel used only for the technical assignment.",
+  "releaseNote": "Adds a compliance branch, shortens variant B and introduces recommendation_expanded.",
+  "session": {
+    "ttlHours": 72,
     "persistAnswers": true,
-    "sessionTtlHours": 72,
-    "storeRawAnswers": false,
-    "progress": { "excludeTypes": ["info", "result"] }
+    "pinVersion": true,
+    "pinExperimentVariant": true
+  },
+  "progress": {
+    "countVisibleOnly": true,
+    "excludeTypes": [
+      "info",
+      "result"
+    ]
   },
   "experiment": {
-    "id": "exp-order-copy-and-shorter-b-v3",
-    "description": "A: full questionnaire, neutral copy. B: work-mode first, benefit-led copy, no tool_count question, 30-day plan CTA.",
+    "id": "question-order-and-result-framing-v3",
+    "assignment": "server",
+    "sticky": true,
     "overrideQueryParam": "variant",
-    "variants": [
-      {
-        "id": "A",
+    "variants": {
+      "A": {
         "weight": 50,
         "stepSequence": [
           "intro",
           "team_size",
           "work_mode",
-          "office_days",
           "priorities",
           "security_constraints",
+          "timezone_span",
+          "office_days",
           "meeting_hours",
+          "async_maturity",
           "tool_count",
           "result"
-        ]
+        ],
+        "stepOverrides": {},
+        "resultOverrides": {}
       },
-      {
-        "id": "B",
+      "B": {
         "weight": 50,
         "stepSequence": [
           "intro",
           "work_mode",
-          "office_days",
+          "meeting_hours",
+          "timezone_span",
           "team_size",
+          "async_maturity",
           "priorities",
           "security_constraints",
-          "meeting_hours",
+          "office_days",
           "result"
         ],
         "stepOverrides": {
           "intro": {
-            "title": "Get your team's 30-day workflow plan",
-            "body": "Answer a few quick questions and we'll build a plan tailored to how your team actually works. Takes about a minute.",
-            "ctaLabel": "Build my plan"
-          },
-          "work_mode": {
-            "title": "Where does your team get work done?",
-            "subtitle": "This shapes the whole plan, so we ask it first."
+            "content": {
+              "eyebrow": "90-second operating check",
+              "title": "Is your team losing time to the way it works?",
+              "body": "Answer a few questions to get a practical, fictional operating-style recommendation.",
+              "primaryActionLabel": "Check our setup"
+            }
           },
           "priorities": {
-            "title": "What should your plan optimise for?",
-            "subtitle": "Pick up to three. We'll weight recommendations accordingly."
-          },
-          "meeting_hours": {
-            "title": "How many hours a week does a typical teammate spend in meetings?",
-            "hint": "Your plan will include concrete ways to win some of them back."
+            "content": {
+              "title": "What is the most urgent operating constraint?",
+              "helperText": "Choose up to three. Some answers may open a follow-up question."
+            }
           }
         },
         "resultOverrides": {
-          "*": {
-            "cta": { "label": "Get my 30-day plan" }
+          "regulated_scale": {
+            "title": "Your team needs a compliance-aware operating model",
+            "cta": {
+              "label": "Open the implementation details",
+              "action": "expand_recommendation"
+            }
+          },
+          "meeting_heavy": {
+            "title": "Meetings are consuming your operating capacity",
+            "cta": {
+              "label": "Open the implementation details",
+              "action": "expand_recommendation"
+            }
+          },
+          "async_native": {
+            "title": "Your team can move faster asynchronously",
+            "cta": {
+              "label": "Open the implementation details",
+              "action": "expand_recommendation"
+            }
+          },
+          "hybrid_structured": {
+            "title": "Your hybrid setup needs firmer rules",
+            "cta": {
+              "label": "Open the implementation details",
+              "action": "expand_recommendation"
+            }
+          },
+          "office_core": {
+            "title": "Your office model needs focus protection",
+            "cta": {
+              "label": "Open the implementation details",
+              "action": "expand_recommendation"
+            }
+          },
+          "balanced": {
+            "title": "Your team needs one shared operating baseline",
+            "cta": {
+              "label": "Open the implementation details",
+              "action": "expand_recommendation"
+            }
           }
         }
       }
-    ]
+    }
   },
-  "steps": [
-    {
+  "steps": {
+    "intro": {
       "id": "intro",
       "type": "info",
-      "title": "Team Workflow Audit",
-      "body": "A few short questions about how your team works. At the end you get a playbook recommendation. No account needed.",
-      "ctaLabel": "Start"
+      "content": {
+        "eyebrow": "Team operating-style check",
+        "title": "Build a work model your team can actually follow",
+        "body": "Answer a few questions and get a fictional recommendation for this technical exercise.",
+        "primaryActionLabel": "Start"
+      }
     },
-    {
+    "team_size": {
       "id": "team_size",
       "type": "number",
-      "title": "How many people are on your team?",
-      "hint": "Count everyone who ships work together, including contractors.",
-      "placeholder": "e.g. 12",
-      "unit": "people",
+      "content": {
+        "title": "How many people are on the team?",
+        "helperText": "Include regular contractors who join team rituals."
+      },
+      "input": {
+        "name": "team_size",
+        "min": 1,
+        "max": 200,
+        "step": 1,
+        "unit": "people"
+      },
       "validation": {
         "required": true,
-        "integer": true,
-        "min": 1,
-        "max": 500,
         "messages": {
-          "required": "Please enter your team size",
-          "integer": "Use a whole number",
-          "min": "A team has at least one person",
-          "max": "For teams above 500 please contact us directly"
+          "required": "Enter the team size.",
+          "min": "The team must have at least one person.",
+          "max": "For this demo, enter a value up to 200."
         }
       }
     },
-    {
+    "work_mode": {
       "id": "work_mode",
       "type": "single-select",
-      "title": "How does your team work?",
-      "options": [
-        { "id": "remote", "label": "Fully remote", "description": "No shared office" },
-        { "id": "hybrid", "label": "Hybrid", "description": "Some days in the office" },
-        { "id": "office", "label": "Office-first", "description": "Most days on site" }
-      ],
+      "content": {
+        "title": "Where does the team work most of the time?",
+        "helperText": "Choose the closest option."
+      },
+      "input": {
+        "name": "work_mode",
+        "options": [
+          {
+            "value": "remote",
+            "label": "Fully remote"
+          },
+          {
+            "value": "hybrid",
+            "label": "Hybrid"
+          },
+          {
+            "value": "office",
+            "label": "Mostly in the office"
+          }
+        ]
+      },
       "validation": {
         "required": true,
-        "messages": { "required": "Choose the option that fits best" }
-      }
-    },
-    {
-      "id": "office_days",
-      "type": "number",
-      "title": "How many days a week is the team in the office?",
-      "placeholder": "1–5",
-      "unit": "days",
-      "visibleWhen": { "op": "in", "field": "work_mode", "value": ["hybrid", "office"] },
-      "validation": {
-        "required": true,
-        "integer": true,
-        "min": 1,
-        "max": 5,
         "messages": {
-          "required": "Enter the number of office days",
-          "min": "At least 1 day — otherwise pick “Fully remote”",
-          "max": "A work week has 5 days"
+          "required": "Select the team's main work mode."
         }
       }
     },
-    {
+    "priorities": {
       "id": "priorities",
       "type": "multi-select",
-      "title": "What matters most right now?",
-      "subtitle": "Pick one to three.",
-      "options": [
-        { "id": "speed", "label": "Shipping faster" },
-        { "id": "quality", "label": "Fewer defects" },
-        { "id": "cost", "label": "Lower tooling cost" },
-        { "id": "compliance", "label": "Compliance & audit readiness" },
-        { "id": "collaboration", "label": "Better collaboration" }
-      ],
+      "content": {
+        "title": "What should the operating model improve?",
+        "helperText": "Choose between one and three priorities."
+      },
+      "input": {
+        "name": "priorities",
+        "options": [
+          {
+            "value": "speed",
+            "label": "Decision speed"
+          },
+          {
+            "value": "focus",
+            "label": "Deep-focus time"
+          },
+          {
+            "value": "culture",
+            "label": "Team connection"
+          },
+          {
+            "value": "cost",
+            "label": "Lower operating cost"
+          },
+          {
+            "value": "onboarding",
+            "label": "Faster onboarding"
+          },
+          {
+            "value": "compliance",
+            "label": "Compliance and access control"
+          }
+        ]
+      },
       "validation": {
         "required": true,
         "minSelections": 1,
         "maxSelections": 3,
         "messages": {
-          "required": "Pick at least one priority",
-          "minSelections": "Pick at least one priority",
-          "maxSelections": "Please pick no more than three"
+          "minSelections": "Choose at least one priority.",
+          "maxSelections": "Choose no more than three priorities."
         }
       }
     },
-    {
+    "security_constraints": {
       "id": "security_constraints",
-      "type": "multi-select",
-      "title": "Which security or compliance constraints apply to you?",
-      "subtitle": "Only shown because compliance is one of your priorities.",
-      "visibleWhen": { "op": "contains", "field": "priorities", "value": "compliance" },
-      "options": [
-        { "id": "sso", "label": "SSO / SCIM required for every tool" },
-        { "id": "audit_logs", "label": "Audit logs must be retained" },
-        { "id": "data_residency", "label": "Data residency (EU / local)" },
-        { "id": "dlp", "label": "DLP / no external file sharing" },
-        { "id": "none_yet", "label": "Nothing formal yet" }
-      ],
+      "type": "single-select",
+      "content": {
+        "title": "How strict are your information-access constraints?",
+        "helperText": "This follow-up appears only when compliance is selected."
+      },
+      "input": {
+        "name": "security_constraints",
+        "options": [
+          {
+            "value": "standard",
+            "label": "Standard role-based access"
+          },
+          {
+            "value": "strict",
+            "label": "Strict separation and audit trails"
+          },
+          {
+            "value": "regulated",
+            "label": "Industry or legal requirements"
+          }
+        ]
+      },
       "validation": {
         "required": true,
-        "minSelections": 1,
-        "maxSelections": 4,
         "messages": {
-          "required": "Pick at least one option — “Nothing formal yet” counts",
-          "minSelections": "Pick at least one option — “Nothing formal yet” counts",
-          "maxSelections": "Please pick no more than four"
+          "required": "Select the closest access-control requirement."
+        }
+      },
+      "visibleWhen": {
+        "answer": "priorities",
+        "operator": "contains",
+        "value": "compliance"
+      }
+    },
+    "timezone_span": {
+      "id": "timezone_span",
+      "type": "single-select",
+      "content": {
+        "title": "How far apart are your working hours?",
+        "helperText": "Think about the earliest and latest regular working times."
+      },
+      "input": {
+        "name": "timezone_span",
+        "options": [
+          {
+            "value": "same",
+            "label": "Mostly the same hours"
+          },
+          {
+            "value": "wide",
+            "label": "About 3–6 hours apart"
+          },
+          {
+            "value": "global",
+            "label": "More than 6 hours apart"
+          }
+        ]
+      },
+      "validation": {
+        "required": true,
+        "messages": {
+          "required": "Select the closest timezone range."
         }
       }
     },
-    {
+    "office_days": {
+      "id": "office_days",
+      "type": "number",
+      "content": {
+        "title": "How many office days are expected each week?",
+        "helperText": "Enter the usual expectation, not occasional events."
+      },
+      "input": {
+        "name": "office_days",
+        "min": 0,
+        "max": 5,
+        "step": 1,
+        "unit": "days"
+      },
+      "validation": {
+        "required": true,
+        "messages": {
+          "required": "Enter the expected number of office days.",
+          "min": "Enter a value from 0 to 5.",
+          "max": "Enter a value from 0 to 5."
+        }
+      },
+      "visibleWhen": {
+        "answer": "work_mode",
+        "operator": "in",
+        "value": [
+          "hybrid",
+          "office"
+        ]
+      }
+    },
+    "meeting_hours": {
       "id": "meeting_hours",
       "type": "number",
-      "title": "How many hours a week does a typical teammate spend in meetings?",
-      "placeholder": "e.g. 8",
-      "unit": "hours",
-      "validation": {
-        "required": true,
+      "content": {
+        "title": "How many hours per person go to meetings each week?",
+        "helperText": "Use a typical week, not the busiest one."
+      },
+      "input": {
+        "name": "meeting_hours",
         "min": 0,
         "max": 40,
-        "messages": {
-          "required": "Give us a rough number",
-          "min": "Can't be negative",
-          "max": "More than 40 hours of meetings a week? Let's talk."
-        }
-      }
-    },
-    {
-      "id": "tool_count",
-      "type": "number",
-      "title": "How many tools does your team use daily?",
-      "hint": "Chat, docs, task tracker, CI, dashboards…",
-      "placeholder": "e.g. 7",
-      "unit": "tools",
+        "step": 1,
+        "unit": "hours"
+      },
       "validation": {
         "required": true,
-        "integer": true,
-        "min": 0,
-        "max": 50,
         "messages": {
-          "required": "Give us a rough number",
-          "max": "More than 50? Let's talk."
+          "required": "Enter weekly meeting hours.",
+          "min": "Enter a value from 0 to 40.",
+          "max": "Enter a value from 0 to 40."
         }
       }
     },
-    {
+    "async_maturity": {
+      "id": "async_maturity",
+      "type": "single-select",
+      "content": {
+        "title": "How are decisions documented today?",
+        "helperText": "Choose what happens most often."
+      },
+      "input": {
+        "name": "async_maturity",
+        "options": [
+          {
+            "value": "low",
+            "label": "Mostly discussed in meetings"
+          },
+          {
+            "value": "medium",
+            "label": "Important decisions are documented"
+          },
+          {
+            "value": "high",
+            "label": "Written context is the default"
+          }
+        ]
+      },
+      "validation": {
+        "required": true,
+        "messages": {
+          "required": "Select the closest description."
+        }
+      }
+    },
+    "tool_count": {
+      "id": "tool_count",
+      "type": "number",
+      "content": {
+        "title": "How many tools does the team use every week?",
+        "helperText": "Count messaging, project, documentation and meeting tools."
+      },
+      "input": {
+        "name": "tool_count",
+        "min": 1,
+        "max": 30,
+        "step": 1,
+        "unit": "tools"
+      },
+      "validation": {
+        "required": true,
+        "messages": {
+          "required": "Enter the number of tools.",
+          "min": "Enter a value of at least 1.",
+          "max": "For this demo, enter a value up to 30."
+        }
+      }
+    },
+    "result": {
       "id": "result",
       "type": "result",
-      "title": "Your recommendation"
+      "content": {
+        "loadingTitle": "Building your recommendation…",
+        "errorTitle": "We could not build the recommendation",
+        "retryLabel": "Try again"
+      },
+      "resultSource": "resultRules"
     }
-  ],
-  "results": [
-    {
-      "id": "regulated_scale",
-      "title": "Regulated team at scale",
-      "body": "A team of your size with compliance as a priority needs a workflow that produces audit evidence automatically — not one that relies on people remembering to document.",
-      "highlights": [
-        "Route every change through a tracked approval in the task tracker",
-        "Centralise identity: SSO for all tools, quarterly access reviews",
-        "Generate change logs and release notes from version control"
-      ],
-      "details": [
-        "You selected compliance among your priorities and your team has 20+ people, so the biggest risk is inconsistent evidence across sub-teams.",
-        "Teams at this size usually pass audits faster when approvals and logs are by-products of the normal workflow rather than a separate process.",
-        "Start with the tools that touch customer data; expand SSO/SCIM coverage from there."
-      ],
-      "cta": { "label": "See the regulated-scale playbook", "url": "#playbook/regulated-scale" }
-    },
-    {
-      "id": "meeting_heavy",
-      "title": "Meeting-heavy team",
-      "body": "Your teammates spend a large part of the week in meetings. The fastest win is moving status and decisions to written, async formats.",
-      "highlights": [
-        "Replace recurring status meetings with written weekly updates",
-        "Introduce two no-meeting focus blocks per week",
-        "Give every meeting a written decision log"
-      ],
-      "details": [
-        "You reported 15+ meeting hours per teammate per week — above the range where teams usually report sustained focus time.",
-        "Async written updates typically reclaim 3–5 hours per person per week in the first month.",
-        "Keep synchronous time for decisions that need debate; move everything else to documents."
-      ],
-      "cta": { "label": "See the async-first playbook", "url": "#playbook/meeting-heavy" }
-    },
-    {
-      "id": "remote_tool_sprawl",
-      "title": "Remote team, too many tools",
-      "body": "Your team is fully remote and juggles a lot of tools. Context switching is probably your biggest hidden cost.",
-      "highlights": [
-        "Consolidate chat, docs and tasks into at most three tools",
-        "Introduce a written weekly plan instead of status meetings",
-        "Set a single source of truth for decisions"
-      ],
-      "details": [
-        "You are fully remote and reported 8+ daily tools; remote teams feel tool sprawl most because every hand-off happens inside a tool.",
-        "Consolidation usually pays back within a quarter in reduced onboarding time alone."
-      ],
-      "cta": { "label": "See the consolidation playbook", "url": "#playbook/remote-tool-sprawl" }
-    },
-    {
-      "id": "remote_async",
-      "title": "Remote-first, async-ready",
-      "body": "A fully remote team with a lean toolset. Your leverage is in async rituals and written communication.",
-      "highlights": [
-        "Move status updates to written async check-ins",
-        "Define response-time expectations per channel",
-        "Record decisions in one searchable place"
-      ],
-      "details": [
-        "You are fully remote with a manageable toolset, so the next step is making communication norms explicit.",
-        "Written response-time expectations remove most of the ‘always on’ pressure in remote teams."
-      ],
-      "cta": { "label": "See the async playbook", "url": "#playbook/remote-async" }
-    },
-    {
-      "id": "office_first",
-      "title": "Office-first team",
-      "body": "Your team spends most of the week together. Protect focus time and make the in-office days count.",
-      "highlights": [
-        "Cluster meetings into two office days",
-        "Introduce no-meeting focus blocks",
-        "Keep a written record for the days people are out"
-      ],
-      "details": [
-        "You reported 4+ office days; co-located teams lose focus time to ad-hoc interruptions rather than to meetings.",
-        "Clustering synchronous work into fixed days protects the remaining ones."
-      ],
-      "cta": { "label": "See the office playbook", "url": "#playbook/office-first" }
-    },
-    {
-      "id": "compliance_focus",
-      "title": "Compliance-driven workflow",
-      "body": "Audit readiness is one of your priorities. Your workflow should produce evidence as a by-product of normal work.",
-      "highlights": [
-        "Make approvals explicit in the task tracker",
-        "Automate change logs from version control",
-        "Review access rights quarterly"
-      ],
-      "details": [
-        "You selected compliance among your priorities; for a team of your size a lightweight approval trail is enough.",
-        "Pick one system of record for approvals before adding any new tooling."
-      ],
-      "cta": { "label": "See the compliance playbook", "url": "#playbook/compliance" }
-    },
-    {
-      "id": "balanced_team",
-      "title": "Balanced hybrid team",
-      "body": "No single bottleneck stands out. Small, consistent improvements to rituals will give you the most return.",
-      "highlights": [
-        "Agree on which days are for collaboration and which for focus",
-        "Run a monthly tooling review",
-        "Keep decisions written and searchable"
-      ],
-      "details": [
-        "None of the stronger signals (remote + many tools, heavy meetings, compliance at scale) applied to your answers.",
-        "Teams in this position get the most from fixing one ritual at a time and measuring the effect."
-      ],
-      "cta": { "label": "See the hybrid playbook", "url": "#playbook/balanced" }
-    }
-  ],
+  },
   "resultRules": [
     {
-      "id": "regulated-at-scale",
+      "resultId": "regulated_scale",
       "when": {
-        "op": "all",
-        "conditions": [
-          { "op": "contains", "field": "priorities", "value": "compliance" },
-          { "op": "gte", "field": "team_size", "value": 20 }
+        "all": [
+          {
+            "answer": "priorities",
+            "operator": "contains",
+            "value": "compliance"
+          },
+          {
+            "answer": "security_constraints",
+            "operator": "in",
+            "value": [
+              "strict",
+              "regulated"
+            ]
+          }
         ]
-      },
-      "resultId": "regulated_scale"
+      }
     },
     {
-      "id": "meeting-heavy",
-      "when": { "op": "gte", "field": "meeting_hours", "value": 15 },
-      "resultId": "meeting_heavy"
-    },
-    {
-      "id": "remote-many-tools",
+      "resultId": "meeting_heavy",
       "when": {
-        "op": "all",
-        "conditions": [
-          { "op": "eq", "field": "work_mode", "value": "remote" },
-          { "op": "gte", "field": "tool_count", "value": 8 }
-        ]
-      },
-      "resultId": "remote_tool_sprawl"
+        "answer": "meeting_hours",
+        "operator": "gte",
+        "value": 15
+      }
     },
     {
-      "id": "remote",
-      "when": { "op": "eq", "field": "work_mode", "value": "remote" },
-      "resultId": "remote_async"
-    },
-    {
-      "id": "office-heavy",
+      "resultId": "async_native",
       "when": {
-        "op": "all",
-        "conditions": [
-          { "op": "in", "field": "work_mode", "value": ["hybrid", "office"] },
-          { "op": "gte", "field": "office_days", "value": 4 }
+        "any": [
+          {
+            "all": [
+              {
+                "answer": "work_mode",
+                "operator": "eq",
+                "value": "remote"
+              },
+              {
+                "answer": "timezone_span",
+                "operator": "in",
+                "value": [
+                  "wide",
+                  "global"
+                ]
+              }
+            ]
+          },
+          {
+            "answer": "async_maturity",
+            "operator": "eq",
+            "value": "high"
+          }
         ]
-      },
-      "resultId": "office_first"
+      }
     },
     {
-      "id": "compliance",
-      "when": { "op": "contains", "field": "priorities", "value": "compliance" },
-      "resultId": "compliance_focus"
+      "resultId": "hybrid_structured",
+      "when": {
+        "answer": "work_mode",
+        "operator": "eq",
+        "value": "hybrid"
+      }
+    },
+    {
+      "resultId": "office_core",
+      "when": {
+        "answer": "work_mode",
+        "operator": "eq",
+        "value": "office"
+      }
     }
   ],
-  "defaultResultId": "balanced_team",
+  "defaultResultId": "balanced",
+  "results": {
+    "regulated_scale": {
+      "id": "regulated_scale",
+      "title": "Compliance-aware scale",
+      "summary": "The operating model must preserve access boundaries and auditability without turning every decision into a meeting.",
+      "recommendations": [
+        "Separate decision records from restricted source material.",
+        "Make access ownership explicit for every workspace.",
+        "Audit exceptions instead of adding blanket approval steps."
+      ],
+      "cta": {
+        "label": "View the action list",
+        "action": "expand_recommendation"
+      }
+    },
+    "meeting_heavy": {
+      "id": "meeting_heavy",
+      "title": "Meeting-heavy",
+      "summary": "Meeting load is likely limiting execution time, regardless of where the team works.",
+      "recommendations": [
+        "Replace routine status meetings with written updates.",
+        "Require an owner and decision for every recurring meeting.",
+        "Cancel one recurring meeting as a controlled experiment."
+      ],
+      "cta": {
+        "label": "View the action list",
+        "action": "expand_recommendation"
+      }
+    },
+    "async_native": {
+      "id": "async_native",
+      "title": "Async-native",
+      "summary": "Your team will benefit from written context, fewer mandatory meetings and explicit response windows.",
+      "recommendations": [
+        "Move routine status updates to written check-ins.",
+        "Define response-time expectations by channel.",
+        "Record decisions in one searchable place."
+      ],
+      "cta": {
+        "label": "View the action list",
+        "action": "expand_recommendation"
+      }
+    },
+    "hybrid_structured": {
+      "id": "hybrid_structured",
+      "title": "Structured hybrid",
+      "summary": "Your team needs a clear reason for office days and equal access to decisions for remote participants.",
+      "recommendations": [
+        "Give each office day a defined purpose.",
+        "Document decisions before the end of the day.",
+        "Avoid meetings where only part of the team can participate."
+      ],
+      "cta": {
+        "label": "View the action list",
+        "action": "expand_recommendation"
+      }
+    },
+    "office_core": {
+      "id": "office_core",
+      "title": "Office-led with focus protection",
+      "summary": "Your team can keep an office-led model while protecting uninterrupted work and documenting key decisions.",
+      "recommendations": [
+        "Create meeting-free focus blocks.",
+        "Use the office for collaboration rather than status reporting.",
+        "Publish decisions for people who were not in the room."
+      ],
+      "cta": {
+        "label": "View the action list",
+        "action": "expand_recommendation"
+      }
+    },
+    "balanced": {
+      "id": "balanced",
+      "title": "Balanced baseline",
+      "summary": "Your answers do not point to one dominant model. Start with shared rules and measure what improves.",
+      "recommendations": [
+        "Agree where decisions are recorded.",
+        "Define which work requires a meeting.",
+        "Review the model after 30 days."
+      ],
+      "cta": {
+        "label": "View the action list",
+        "action": "expand_recommendation"
+      }
+    }
+  },
   "events": {
+    "baseProperties": [
+      "event_id",
+      "session_id",
+      "client_timestamp",
+      "funnel_id",
+      "funnel_version",
+      "experiment_id",
+      "variant",
+      "step_id",
+      "utm_source",
+      "utm_medium",
+      "utm_campaign"
+    ],
     "allowed": [
-      "session_started",
-      "step_viewed",
-      "answer_submitted",
-      "step_completed",
-      "back_clicked",
-      "result_viewed",
-      "cta_clicked",
-      "recommendation_expanded"
-    ]
+      {
+        "name": "session_started",
+        "trigger": "A server-side session is created.",
+        "properties": []
+      },
+      {
+        "name": "step_viewed",
+        "trigger": "A visible step is rendered.",
+        "properties": [
+          "step_type",
+          "visible_step_index",
+          "visible_step_count"
+        ]
+      },
+      {
+        "name": "answer_submitted",
+        "trigger": "A valid answer is submitted.",
+        "properties": [
+          "answer_kind"
+        ]
+      },
+      {
+        "name": "step_completed",
+        "trigger": "Navigation advances from a valid interactive step.",
+        "properties": [
+          "next_step_id"
+        ]
+      },
+      {
+        "name": "back_clicked",
+        "trigger": "The user navigates to a previous visible step.",
+        "properties": [
+          "destination_step_id"
+        ]
+      },
+      {
+        "name": "result_viewed",
+        "trigger": "A result is rendered.",
+        "properties": [
+          "result_id"
+        ]
+      },
+      {
+        "name": "cta_clicked",
+        "trigger": "The primary result CTA is clicked.",
+        "properties": [
+          "result_id",
+          "action"
+        ]
+      },
+      {
+        "name": "recommendation_expanded",
+        "trigger": "The user opens the detailed recommendation after the result CTA.",
+        "properties": [
+          "result_id",
+          "action",
+          "source"
+        ]
+      }
+    ],
+    "privacy": {
+      "storeRawAnswers": false,
+      "allowAnswerKinds": true
+    }
   }
 }

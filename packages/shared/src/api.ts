@@ -21,7 +21,7 @@ export interface SessionResponse {
 export interface VersionSummary {
   version: string;
   funnelId: string;
-  name: string | null;
+  title: string | null;
   status: 'draft' | 'published' | 'archived';
   isActive: boolean;
   createdAt: string;

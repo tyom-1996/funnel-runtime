@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import {
   evaluateResult,
   getVisibleSteps,
+  visiblePosition,
   type AnalyticsResponse,
   type Answers,
   type EventsBatchResponse,
@@ -129,7 +130,12 @@ async function main() {
       properties,
     });
 
-    const events: Event[] = [ev('session_started', undefined, { variant_source: session.variantSource, experiment_id: funnel.experimentId })];
+    const events: Event[] = [ev('session_started')];
+    const viewed = (stepId: string, a: Answers) => {
+      const pos = visiblePosition(funnel, a, stepId);
+      const st = funnel.steps.find((s) => s.id === stepId)!;
+      return ev('step_viewed', stepId, { step_type: st.type, visible_step_index: pos.index, visible_step_count: pos.count });
+    };
     const exp: Expectation = { version: session.funnelVersion, variant: session.variant, campaign, viewed: new Set(), reachedResult: false, cta: false };
     const answers: Answers = {};
 
@@ -141,18 +147,20 @@ async function main() {
     let completedSteps = 0;
     while (idx < visible.length) {
       const step = visible[idx]!;
-      events.push(ev('step_viewed', step.id, { step_type: step.type }));
+      events.push(viewed(step.id, answers));
       exp.viewed.add(step.id);
 
       if (step.type === 'result') {
-        events.push(ev('result_viewed', step.id, { result_id: evaluateResult(funnel, answers).id }));
+        const result = evaluateResult(funnel, answers);
+        events.push(ev('result_viewed', step.id, { result_id: result.id }));
         exp.reachedResult = true;
-        if (funnel.allowedEvents.includes('recommendation_expanded') && chance(0.4)) {
-          events.push(ev('recommendation_expanded', step.id));
-        }
         if (chance(session.variant === 'B' ? 0.55 : 0.4)) {
-          events.push(ev('cta_clicked', step.id));
+          events.push(ev('cta_clicked', step.id, { result_id: result.id, action: result.cta.action ?? null }));
           exp.cta = true;
+          // the CTA expands the recommendation → v3 emits recommendation_expanded
+          if (funnel.allowedEvents.includes('recommendation_expanded') && result.cta.action === 'expand_recommendation') {
+            events.push(ev('recommendation_expanded', step.id, { result_id: result.id, action: result.cta.action, source: 'cta' }));
+          }
         }
         break;
       }
@@ -163,19 +171,18 @@ async function main() {
         // occasionally go back one step and re-view it (must not inflate unique counts)
         if (idx > 0 && chance(0.15)) {
           const prev = visible[idx - 1]!;
-          events.push(ev('back_clicked', step.id));
-          events.push(ev('step_viewed', prev.id, { step_type: prev.type }));
-          events.push(ev('step_viewed', step.id, { step_type: step.type }));
+          events.push(ev('back_clicked', step.id, { destination_step_id: prev.id }));
+          events.push(viewed(prev.id, answers));
+          events.push(viewed(step.id, answers));
         }
         answers[step.id] = randomAnswer(step, random);
         events.push(ev('answer_submitted', step.id, { answer_kind: step.type }));
       }
-      events.push(ev('step_completed', step.id));
-      completedSteps++;
-
       // persist like the browser does (validates the answer server-side)
       visible = getVisibleSteps(funnel, answers);
       const next = visible[visible.findIndex((s) => s.id === step.id) + 1];
+      events.push(ev('step_completed', step.id, { next_step_id: next?.id ?? null }));
+      completedSteps++;
       await patch(args.base, headers, sid, { answers: { [step.id]: answers[step.id] }, currentStepId: next?.id ?? step.id });
       idx = visible.findIndex((s) => s.id === step.id) + 1;
     }
@@ -271,24 +278,27 @@ async function patch(base: string, headers: Record<string, string>, sid: string,
 
 function randomAnswer(step: Step, random: () => number): unknown {
   const v = step.validation ?? {};
+  const input = step.input ?? {};
+  const options = input.options ?? [];
   switch (step.type) {
     case 'number': {
-      const min = v.min ?? 0;
-      const max = v.max ?? 20;
+      const min = input.min ?? 0;
+      const max = input.max ?? 20;
       const span = Math.min(max, min + 40) - min; // keep numbers in a realistic range
-      const n = min + random() * span;
-      return v.integer === false ? Number(n.toFixed(1)) : Math.round(n);
+      const stepSize = input.step ?? 1;
+      const n = min + Math.round((random() * span) / stepSize) * stepSize;
+      return Math.min(max, Number(n.toFixed(2)));
     }
     case 'single-select':
-      return step.options![Math.floor(random() * step.options!.length)]!.id;
+      return options[Math.floor(random() * options.length)]!.value;
     case 'multi-select': {
       const minSel = v.minSelections ?? 1;
-      const maxSel = Math.min(v.maxSelections ?? 3, step.options!.length);
+      const maxSel = Math.min(v.maxSelections ?? 3, options.length);
       const count = minSel + Math.floor(random() * (maxSel - minSel + 1));
-      const pool = [...step.options!];
+      const pool = [...options];
       const out: string[] = [];
       while (out.length < count && pool.length) {
-        out.push(pool.splice(Math.floor(random() * pool.length), 1)[0]!.id);
+        out.push(pool.splice(Math.floor(random() * pool.length), 1)[0]!.value);
       }
       return out;
     }

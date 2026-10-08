@@ -1,4 +1,4 @@
-import type { FunnelConfig, FunnelResult, Step, StepType, Variant } from './schema.js';
+import { allowedEventNames, versionKey, type FunnelConfig, type FunnelResult, type Step, type StepType, type Variant } from './schema.js';
 import { evaluateCondition, type Answers } from './conditions.js';
 
 /**
@@ -7,12 +7,15 @@ import { evaluateCondition, type Answers } from './conditions.js';
  */
 export interface ResolvedFunnel {
   funnelId: string;
+  /** Canonical string version ("1", "3"). */
   version: string;
-  name?: string;
+  title?: string;
   variant: string;
   experimentId: string;
   overrideQueryParam: string;
-  settings: FunnelConfig['settings'];
+  session: FunnelConfig['session'];
+  progress: FunnelConfig['progress'];
+  privacy: FunnelConfig['events']['privacy'];
   steps: Step[];
   results: FunnelResult[];
   resultRules: FunnelConfig['resultRules'];
@@ -20,58 +23,60 @@ export interface ResolvedFunnel {
   allowedEvents: string[];
 }
 
+export function variantIds(config: FunnelConfig): string[] {
+  return Object.keys(config.experiment.variants);
+}
+
 export function getVariant(config: FunnelConfig, variantId: string): Variant {
-  const v = config.experiment.variants.find((x) => x.id === variantId);
+  const v = config.experiment.variants[variantId];
   if (!v) throw new Error(`Variant "${variantId}" not found in experiment "${config.experiment.id}"`);
   return v;
 }
 
-/**
- * Weighted random pick. `random` is injectable for deterministic tests.
- */
-export function pickVariant(config: FunnelConfig, random: () => number = Math.random): Variant {
-  const variants = config.experiment.variants;
-  const total = variants.reduce((s, v) => s + v.weight, 0);
+/** Weighted random pick. `random` is injectable for deterministic tests. */
+export function pickVariant(config: FunnelConfig, random: () => number = Math.random): string {
+  const entries = Object.entries(config.experiment.variants);
+  const total = entries.reduce((s, [, v]) => s + v.weight, 0);
   let r = random() * total;
-  for (const v of variants) {
+  for (const [id, v] of entries) {
     r -= v.weight;
-    if (r < 0) return v;
+    if (r < 0) return id;
   }
-  return variants[variants.length - 1]!;
+  return entries[entries.length - 1]![0];
 }
 
 export function resolveFunnel(config: FunnelConfig, variantId: string): ResolvedFunnel {
   const variant = getVariant(config, variantId);
-  const byId = new Map(config.steps.map((s) => [s.id, s]));
 
-  const order = variant.stepSequence ?? config.steps.map((s) => s.id);
-  const steps: Step[] = order.map((id) => {
-    const base = byId.get(id);
+  const steps: Step[] = variant.stepSequence.map((id) => {
+    const base = config.steps[id];
     if (!base) throw new Error(`stepSequence references unknown step "${id}"`);
-    const override = variant.stepOverrides?.[id];
-    return override ? ({ ...base, ...override, id: base.id, type: base.type } as Step) : base;
+    const override = variant.stepOverrides[id];
+    return override ? ({ ...deepMerge(base, override), id: base.id, type: base.type } as Step) : base;
   });
 
-  const star = variant.resultOverrides?.['*'];
-  const results: FunnelResult[] = config.results.map((r) => {
-    const own = variant.resultOverrides?.[r.id];
+  const star = variant.resultOverrides['*'];
+  const results: FunnelResult[] = Object.values(config.results).map((r) => {
+    const own = variant.resultOverrides[r.id];
     if (!star && !own) return r;
-    return deepMerge(deepMerge(r, star ?? {}), own ?? {}) as FunnelResult;
+    return { ...deepMerge(deepMerge(r, star ?? {}), own ?? {}), id: r.id } as FunnelResult;
   });
 
   return {
     funnelId: config.funnelId,
-    version: config.version,
-    name: config.name,
-    variant: variant.id,
+    version: versionKey(config),
+    title: config.title,
+    variant: variantId,
     experimentId: config.experiment.id,
     overrideQueryParam: config.experiment.overrideQueryParam,
-    settings: config.settings,
+    session: config.session,
+    progress: config.progress,
+    privacy: config.events.privacy,
     steps,
     results,
     resultRules: config.resultRules,
     defaultResultId: config.defaultResultId,
-    allowedEvents: config.events.allowed,
+    allowedEvents: allowedEventNames(config),
   };
 }
 
@@ -80,11 +85,7 @@ function deepMerge<T extends Record<string, unknown>>(base: T, patch: Record<str
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
     const cur = out[k];
-    if (isPlainObject(v) && isPlainObject(cur)) {
-      out[k] = deepMerge(cur, v);
-    } else {
-      out[k] = v;
-    }
+    out[k] = isPlainObject(v) && isPlainObject(cur) ? deepMerge(cur, v) : v;
   }
   return out as T;
 }
@@ -97,9 +98,9 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 
 /**
  * Steps visible for the given answers, in variant order. Visibility is
- * evaluated sequentially: a step's condition only sees answers of steps
- * that are themselves visible and precede it, so an answer to a hidden
- * step can never make another step appear.
+ * evaluated sequentially: a step's condition only sees answers of steps that
+ * are themselves visible and precede it, so an answer to a hidden step can
+ * never make another step appear.
  */
 export function getVisibleSteps(funnel: ResolvedFunnel, answers: Answers): Step[] {
   const visible: Step[] = [];
@@ -107,7 +108,7 @@ export function getVisibleSteps(funnel: ResolvedFunnel, answers: Answers): Step[
   for (const step of funnel.steps) {
     if (step.visibleWhen && !evaluateCondition(step.visibleWhen, effective)) continue;
     visible.push(step);
-    if (step.id in answers && answers[step.id] !== undefined) effective[step.id] = answers[step.id];
+    if (answers[step.id] !== undefined) effective[step.id] = answers[step.id];
   }
   return visible;
 }
@@ -115,9 +116,9 @@ export function getVisibleSteps(funnel: ResolvedFunnel, answers: Answers): Step[
 /**
  * Returns only answers that belong to currently visible steps.
  *
- * This is the "changed my mind" case: the user answered `office_days`,
- * went back and switched `work_mode` to `remote`. The stale `office_days`
- * answer is still stored but must not influence progress or the result.
+ * The "changed my mind" case: the user answered `office_days`, went back and
+ * switched `work_mode` to `remote`. The stale `office_days` answer must not
+ * influence progress or the result.
  */
 export function pruneAnswers(funnel: ResolvedFunnel, answers: Answers): Answers {
   const visibleIds = new Set(getVisibleSteps(funnel, answers).map((s) => s.id));
@@ -129,7 +130,7 @@ export function pruneAnswers(funnel: ResolvedFunnel, answers: Answers): Answers 
 }
 
 export interface Progress {
-  /** 1-based index of the current step among counted steps, 0 for excluded steps before the first. */
+  /** 1-based position of the current step among counted steps (0 before the first counted step). */
   current: number;
   total: number;
   /** 0..1 */
@@ -137,27 +138,28 @@ export interface Progress {
 }
 
 export function computeProgress(funnel: ResolvedFunnel, answers: Answers, currentStepId: string): Progress {
-  const exclude = new Set<StepType>(funnel.settings.progress.excludeTypes);
-  const visible = getVisibleSteps(funnel, answers);
+  const exclude = new Set<StepType>(funnel.progress.excludeTypes);
+  const visible = funnel.progress.countVisibleOnly ? getVisibleSteps(funnel, answers) : funnel.steps;
   const counted = visible.filter((s) => !exclude.has(s.type));
   const total = counted.length;
 
-  const currentIdxVisible = visible.findIndex((s) => s.id === currentStepId);
-  if (currentIdxVisible === -1) return { current: 0, total, ratio: 0 };
+  const idx = visible.findIndex((s) => s.id === currentStepId);
+  if (idx === -1 || total === 0) return { current: 0, total, ratio: 0 };
 
-  // number of counted steps strictly before the current one, plus current if it is counted
   let current = 0;
-  for (let i = 0; i <= currentIdxVisible; i++) {
-    const s = visible[i]!;
-    if (!exclude.has(s.type)) current++;
+  for (let i = 0; i <= idx; i++) if (!exclude.has(visible[i]!.type)) current++;
+  if (exclude.has(visible[idx]!.type)) {
+    // excluded step (intro / result): position = number of counted steps already behind us
+    const allBehind = counted.every((c) => visible.indexOf(c) < idx);
+    current = allBehind ? total : current;
   }
-  const currentStep = visible[currentIdxVisible]!;
-  if (exclude.has(currentStep.type)) {
-    // e.g. result screen: all counted steps are behind us; intro: none
-    const isAfterAll = counted.every((c) => visible.indexOf(c) < currentIdxVisible);
-    return { current: isAfterAll ? total : current, total, ratio: total === 0 ? 0 : (isAfterAll ? total : current) / total };
-  }
-  return { current, total, ratio: total === 0 ? 0 : current / total };
+  return { current, total, ratio: current / total };
+}
+
+/** Index of the step among visible steps and the visible count — used for step_viewed properties. */
+export function visiblePosition(funnel: ResolvedFunnel, answers: Answers, stepId: string): { index: number; count: number } {
+  const visible = getVisibleSteps(funnel, answers);
+  return { index: visible.findIndex((s) => s.id === stepId), count: visible.length };
 }
 
 export function getNextStep(funnel: ResolvedFunnel, answers: Answers, currentStepId: string): Step | null {
@@ -181,56 +183,60 @@ export interface ValidationError {
   message: string;
 }
 
-const DEFAULT_MESSAGES: Record<string, (v: Record<string, unknown>) => string> = {
+const DEFAULT_MESSAGES: Record<string, (s: Step) => string> = {
   required: () => 'This field is required',
-  min: (v) => `Value must be at least ${v.min}`,
-  max: (v) => `Value must be at most ${v.max}`,
-  integer: () => 'Value must be a whole number',
   number: () => 'Please enter a valid number',
-  minSelections: (v) => `Select at least ${v.minSelections} option(s)`,
-  maxSelections: (v) => `Select at most ${v.maxSelections} option(s)`,
+  min: (s) => `Value must be at least ${s.input?.min}`,
+  max: (s) => `Value must be at most ${s.input?.max}`,
+  step: (s) => (s.input?.step === 1 ? 'Use a whole number' : `Value must be a multiple of ${s.input?.step}`),
+  minSelections: (s) => `Select at least ${s.validation?.minSelections} option(s)`,
+  maxSelections: (s) => `Select at most ${s.validation?.maxSelections} option(s)`,
   option: () => 'Unknown option',
 };
 
+/**
+ * Validates a single answer against the step. Bounds come from `input`
+ * (min/max/step), selection limits from `validation`, texts from
+ * `validation.messages`.
+ */
 export function validateAnswer(step: Step, value: unknown): ValidationError | null {
+  if (step.type === 'info' || step.type === 'result') return null;
   const v = step.validation ?? {};
-  const msg = (rule: string) => ({
+  const input = step.input ?? {};
+  const msg = (rule: string): ValidationError => ({
     rule,
-    message: v.messages?.[rule] ?? DEFAULT_MESSAGES[rule]?.(v as Record<string, unknown>) ?? 'Invalid value',
+    message: v.messages?.[rule] ?? DEFAULT_MESSAGES[rule]?.(step) ?? 'Invalid value',
   });
   const isEmpty = value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
-
-  if (step.type === 'info' || step.type === 'result') return null;
-
   if (isEmpty) return v.required ? msg('required') : null;
 
   if (step.type === 'number') {
     const n = typeof value === 'number' ? value : Number(value);
-    if (typeof value === 'boolean' || Number.isNaN(n) || !Number.isFinite(n)) return msg('number');
-    if (v.integer && !Number.isInteger(n)) return msg('integer');
-    if (v.min !== undefined && n < v.min) return msg('min');
-    if (v.max !== undefined && n > v.max) return msg('max');
+    if (typeof value === 'boolean' || !Number.isFinite(n)) return msg('number');
+    if (input.min !== undefined && n < input.min) return msg('min');
+    if (input.max !== undefined && n > input.max) return msg('max');
+    if (input.step !== undefined) {
+      const base = input.min ?? 0;
+      const k = (n - base) / input.step;
+      if (Math.abs(k - Math.round(k)) > 1e-9) return msg('step');
+    }
     return null;
   }
 
-  const optionIds = new Set((step.options ?? []).map((o) => o.id));
+  const optionValues = new Set((input.options ?? []).map((o) => o.value));
 
   if (step.type === 'single-select') {
-    if (typeof value !== 'string' || !optionIds.has(value)) return msg('option');
-    return null;
+    return typeof value === 'string' && optionValues.has(value) ? null : msg('option');
   }
 
-  if (step.type === 'multi-select') {
-    if (!Array.isArray(value) || value.some((x) => typeof x !== 'string' || !optionIds.has(x))) return msg('option');
-    if (v.minSelections !== undefined && value.length < v.minSelections) return msg('minSelections');
-    if (v.maxSelections !== undefined && value.length > v.maxSelections) return msg('maxSelections');
-    return null;
-  }
-
+  // multi-select
+  if (!Array.isArray(value) || value.some((x) => typeof x !== 'string' || !optionValues.has(x))) return msg('option');
+  if (v.minSelections !== undefined && value.length < v.minSelections) return msg('minSelections');
+  if (v.maxSelections !== undefined && value.length > v.maxSelections) return msg('maxSelections');
   return null;
 }
 
-/** Coerce a raw user input to the canonical stored shape for the step type. */
+/** Coerce raw user input to the canonical stored shape for the step type. */
 export function normalizeAnswer(step: Step, value: unknown): unknown {
   if (step.type === 'number') {
     if (value === '' || value === null || value === undefined) return undefined;
@@ -240,17 +246,14 @@ export function normalizeAnswer(step: Step, value: unknown): unknown {
   return value;
 }
 
-/** Non-identifying description of the answer, safe to put into analytics. */
+/** Non-identifying description of an answer — the only thing analytics gets (`privacy.allowAnswerKinds`). */
 export function answerKind(step: Step): string {
   return step.type;
 }
 
 // ---------- Result ----------
 
-/**
- * First matching rule wins; otherwise `defaultResultId`. Only answers of
- * visible steps are considered.
- */
+/** First matching rule wins; otherwise `defaultResultId`. Only answers of visible steps count. */
 export function evaluateResult(funnel: ResolvedFunnel, answers: Answers): FunnelResult {
   const effective = pruneAnswers(funnel, answers);
   let resultId = funnel.defaultResultId;
@@ -263,18 +266,4 @@ export function evaluateResult(funnel: ResolvedFunnel, answers: Answers): Funnel
   const result = funnel.results.find((r) => r.id === resultId) ?? funnel.results.find((r) => r.id === funnel.defaultResultId);
   if (!result) throw new Error(`Result "${resultId}" not found`);
   return result;
-}
-
-/**
- * Is every visible, answerable step before `stepId` answered and valid?
- * Used by the server to refuse jumping to the result without answers.
- */
-export function isReachable(funnel: ResolvedFunnel, answers: Answers, stepId: string): boolean {
-  const visible = getVisibleSteps(funnel, answers);
-  for (const s of visible) {
-    if (s.id === stepId) return true;
-    if (s.type === 'info') continue;
-    if (validateAnswer(s, answers[s.id]) !== null) return false;
-  }
-  return false;
 }

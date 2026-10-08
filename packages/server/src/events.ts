@@ -1,4 +1,4 @@
-import { IncomingEventSchema, type EventResult, type EventsBatchResponse, type Utm } from '@funnel/shared';
+import { IncomingEventSchema, allowedEventNames, type EventResult, type EventsBatchResponse, type Utm } from '@funnel/shared';
 import type { Db } from './db.js';
 import { nowIso } from './db.js';
 import type { SessionRow } from './sessions.js';
@@ -81,14 +81,14 @@ export class EventService {
         }
 
         const config = this.versions.get(session.funnel_version);
-        if (!config.events.allowed.includes(ev.event_type)) {
+        if (!allowedEventNames(config).includes(ev.event_type)) {
           results.push({ event_id: ev.event_id, status: 'rejected', reason: `Event type "${ev.event_type}" is not allowed in version ${session.funnel_version}` });
           summary.rejected++;
           continue;
         }
 
         let properties: Record<string, unknown> = ev.properties ?? {};
-        if (!config.settings.storeRawAnswers) properties = stripRawAnswers(properties);
+        if (!config.events.privacy.storeRawAnswers) properties = stripRawAnswers(properties);
         const propertiesJson = JSON.stringify(properties);
         if (propertiesJson.length > MAX_PROPERTIES_BYTES) {
           results.push({ event_id: ev.event_id, status: 'rejected', reason: 'properties too large' });

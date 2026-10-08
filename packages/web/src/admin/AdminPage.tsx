@@ -110,7 +110,7 @@ export function AdminPage() {
                 <td>
                   <strong>{v.version}</strong> {v.isActive && <span className="pill ok">active</span>}
                 </td>
-                <td>{v.name ?? '—'}</td>
+                <td>{v.title ?? '—'}</td>
                 <td>{v.status}</td>
                 <td className="mono">{v.experimentId}</td>
                 <td>{v.stepCount}</td>
@@ -165,7 +165,7 @@ export function AdminPage() {
             rows={12}
             value={uploadText}
             onChange={(e) => setUploadText(e.target.value)}
-            placeholder='{ "funnelId": "...", "version": "v3", ... }'
+            placeholder='{ "funnelId": "...", "version": 3, "status": "draft", ... }'
             spellCheck={false}
           />
           <button className="primary" disabled={busy || !uploadText.trim()} onClick={() => void upload()}>

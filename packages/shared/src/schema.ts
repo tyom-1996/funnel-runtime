@@ -1,31 +1,31 @@
 import { z } from 'zod';
 
 /**
- * Funnel config schema.
+ * Funnel config schema — follows the format of the provided funnel-v1.json /
+ * funnel-v3.json exactly. Everything the frontend renders is described here;
+ * the frontend has no knowledge of concrete steps.
  *
- * Everything the frontend renders is described here; the frontend has no
- * knowledge of concrete steps. The schema is intentionally permissive about
- * unknown keys (`passthrough`) so that newer configs with extra fields keep
- * working on an older runtime.
+ * Unknown keys are kept (`passthrough`) so a newer config with extra fields
+ * keeps working on an older runtime.
  */
 
 // ---------- Conditions ----------
 
-const leafOps = ['eq', 'in', 'contains', 'gte', 'gt', 'lte', 'lt', 'neq'] as const;
-export type LeafOp = (typeof leafOps)[number];
+const operators = ['eq', 'neq', 'in', 'contains', 'gte', 'gt', 'lte', 'lt'] as const;
+export type Operator = (typeof operators)[number];
 
 export type Condition =
-  | { op: LeafOp; field: string; value?: unknown }
-  | { op: 'all'; conditions: Condition[] }
-  | { op: 'any'; conditions: Condition[] }
-  | { op: 'not'; condition: Condition };
+  | { answer: string; operator: Operator; value?: unknown }
+  | { all: Condition[] }
+  | { any: Condition[] }
+  | { not: Condition };
 
 export const ConditionSchema: z.ZodType<Condition> = z.lazy(() =>
   z.union([
-    z.object({ op: z.enum(leafOps), field: z.string().min(1), value: z.unknown() }),
-    z.object({ op: z.literal('all'), conditions: z.array(ConditionSchema) }),
-    z.object({ op: z.literal('any'), conditions: z.array(ConditionSchema) }),
-    z.object({ op: z.literal('not'), condition: ConditionSchema }),
+    z.object({ answer: z.string().min(1), operator: z.enum(operators), value: z.unknown() }).strict(),
+    z.object({ all: z.array(ConditionSchema) }).strict(),
+    z.object({ any: z.array(ConditionSchema) }).strict(),
+    z.object({ not: ConditionSchema }).strict(),
   ]),
 );
 
@@ -34,99 +34,131 @@ export const ConditionSchema: z.ZodType<Condition> = z.lazy(() =>
 export const StepTypeSchema = z.enum(['info', 'single-select', 'multi-select', 'number', 'result']);
 export type StepType = z.infer<typeof StepTypeSchema>;
 
+export const StepContentSchema = z
+  .object({
+    eyebrow: z.string().optional(),
+    title: z.string().optional(),
+    body: z.string().optional(),
+    helperText: z.string().optional(),
+    primaryActionLabel: z.string().optional(),
+    // result step
+    loadingTitle: z.string().optional(),
+    errorTitle: z.string().optional(),
+    retryLabel: z.string().optional(),
+  })
+  .passthrough();
+export type StepContent = z.infer<typeof StepContentSchema>;
+
 export const OptionSchema = z
   .object({
-    id: z.string().min(1),
+    value: z.string().min(1),
     label: z.string(),
     description: z.string().optional(),
   })
   .passthrough();
 export type Option = z.infer<typeof OptionSchema>;
 
+export const StepInputSchema = z
+  .object({
+    name: z.string().optional(),
+    /** number: bounds and granularity (`step: 1` → whole numbers) */
+    min: z.number().optional(),
+    max: z.number().optional(),
+    step: z.number().positive().optional(),
+    unit: z.string().optional(),
+    placeholder: z.string().optional(),
+    /** select types */
+    options: z.array(OptionSchema).optional(),
+  })
+  .passthrough();
+export type StepInput = z.infer<typeof StepInputSchema>;
+
 export const ValidationSchema = z
   .object({
     required: z.boolean().optional(),
-    min: z.number().optional(),
-    max: z.number().optional(),
-    integer: z.boolean().optional(),
     minSelections: z.number().int().optional(),
     maxSelections: z.number().int().optional(),
-    /** Error texts come from the config, keyed by rule name. */
+    /** Error texts come from the config, keyed by rule name (required, min, max, step, minSelections, maxSelections, option). */
     messages: z.record(z.string()).optional(),
   })
   .passthrough();
 export type Validation = z.infer<typeof ValidationSchema>;
 
-const BaseStep = z.object({
-  id: z.string().min(1),
-  type: StepTypeSchema,
-  title: z.string().optional(),
-  subtitle: z.string().optional(),
-  body: z.string().optional(),
-  /** Label of the primary button on this step. */
-  ctaLabel: z.string().optional(),
-  /** Hint under the input, placeholder for number input, unit label etc. */
-  hint: z.string().optional(),
-  placeholder: z.string().optional(),
-  unit: z.string().optional(),
-  options: z.array(OptionSchema).optional(),
-  validation: ValidationSchema.optional(),
-  visibleWhen: ConditionSchema.optional(),
-});
-
-export const StepSchema = BaseStep.passthrough();
+export const StepSchema = z
+  .object({
+    id: z.string().min(1),
+    type: StepTypeSchema,
+    content: StepContentSchema.default({}),
+    input: StepInputSchema.optional(),
+    validation: ValidationSchema.optional(),
+    visibleWhen: ConditionSchema.optional(),
+    resultSource: z.string().optional(),
+  })
+  .passthrough();
 export type Step = z.infer<typeof StepSchema>;
 
 // ---------- Results ----------
+
+export const CtaSchema = z
+  .object({
+    label: z.string(),
+    /** `expand_recommendation` reveals the recommendation list; a `url` opens a link. */
+    action: z.string().optional(),
+    url: z.string().optional(),
+  })
+  .passthrough();
+export type Cta = z.infer<typeof CtaSchema>;
 
 export const ResultSchema = z
   .object({
     id: z.string().min(1),
     title: z.string(),
-    body: z.string().optional(),
-    /** Short bullet points shown on the result screen. */
-    highlights: z.array(z.string()).optional(),
-    /** Longer recommendation text, rendered collapsed; expanding emits `recommendation_expanded`. */
-    details: z.array(z.string()).optional(),
-    cta: z
-      .object({
-        label: z.string(),
-        url: z.string().optional(),
-      })
-      .passthrough(),
+    summary: z.string().optional(),
+    recommendations: z.array(z.string()).optional(),
+    cta: CtaSchema,
   })
   .passthrough();
 export type FunnelResult = z.infer<typeof ResultSchema>;
 
 export const ResultRuleSchema = z
   .object({
-    id: z.string().optional(),
-    when: ConditionSchema,
     resultId: z.string().min(1),
+    when: ConditionSchema,
   })
   .passthrough();
 export type ResultRule = z.infer<typeof ResultRuleSchema>;
 
 // ---------- Experiment ----------
 
-/** Partial step used for per-variant overrides (anything but id/type). */
-export const StepOverrideSchema = BaseStep.omit({ id: true, type: true }).partial().passthrough();
+/** Per-variant partial step: anything but id/type, deep-merged onto the base step. */
+export const StepOverrideSchema = z
+  .object({
+    content: StepContentSchema.partial().optional(),
+    input: StepInputSchema.partial().optional(),
+    validation: ValidationSchema.partial().optional(),
+    visibleWhen: ConditionSchema.optional(),
+  })
+  .passthrough();
 export type StepOverride = z.infer<typeof StepOverrideSchema>;
 
-export const ResultOverrideSchema = ResultSchema.omit({ id: true }).deepPartial().passthrough();
+export const ResultOverrideSchema = z
+  .object({
+    title: z.string().optional(),
+    summary: z.string().optional(),
+    recommendations: z.array(z.string()).optional(),
+    cta: CtaSchema.partial().optional(),
+  })
+  .passthrough();
 export type ResultOverride = z.infer<typeof ResultOverrideSchema>;
 
 export const VariantSchema = z
   .object({
-    id: z.string().min(1),
     weight: z.number().nonnegative(),
-    description: z.string().optional(),
     /** Ordered list of step ids. Steps not listed are not shown in this variant. */
-    stepSequence: z.array(z.string().min(1)).optional(),
-    /** Per-step overrides: texts, options, validation, visibility... */
-    stepOverrides: z.record(StepOverrideSchema).optional(),
-    /** Per-result overrides; `*` applies to every result. */
-    resultOverrides: z.record(ResultOverrideSchema).optional(),
+    stepSequence: z.array(z.string().min(1)).min(1),
+    stepOverrides: z.record(StepOverrideSchema).default({}),
+    /** Keyed by result id; `*` applies to every result. */
+    resultOverrides: z.record(ResultOverrideSchema).default({}),
   })
   .passthrough();
 export type Variant = z.infer<typeof VariantSchema>;
@@ -134,60 +166,91 @@ export type Variant = z.infer<typeof VariantSchema>;
 export const ExperimentSchema = z
   .object({
     id: z.string().min(1),
-    description: z.string().optional(),
+    assignment: z.string().default('server'),
+    sticky: z.boolean().default(true),
     overrideQueryParam: z.string().default('variant'),
-    variants: z.array(VariantSchema).min(1),
+    variants: z.record(VariantSchema),
   })
   .passthrough();
 export type Experiment = z.infer<typeof ExperimentSchema>;
 
-// ---------- Settings / events ----------
+// ---------- Session / progress / events ----------
 
-export const SettingsSchema = z
+export const SessionSettingsSchema = z
   .object({
+    ttlHours: z.number().positive().default(72),
     persistAnswers: z.boolean().default(true),
-    sessionTtlHours: z.number().positive().default(72),
-    storeRawAnswers: z.boolean().default(false),
-    progress: z
+    pinVersion: z.boolean().default(true),
+    pinExperimentVariant: z.boolean().default(true),
+  })
+  .passthrough()
+  .default({});
+
+export const ProgressSettingsSchema = z
+  .object({
+    countVisibleOnly: z.boolean().default(true),
+    excludeTypes: z.array(StepTypeSchema).default(['info', 'result']),
+  })
+  .passthrough()
+  .default({});
+
+export const AllowedEventSchema = z
+  .object({
+    name: z.string().min(1),
+    trigger: z.string().optional(),
+    properties: z.array(z.string()).default([]),
+  })
+  .passthrough();
+export type AllowedEvent = z.infer<typeof AllowedEventSchema>;
+
+export const EventsConfigSchema = z
+  .object({
+    baseProperties: z.array(z.string()).default([]),
+    allowed: z.array(AllowedEventSchema).min(1),
+    privacy: z
       .object({
-        excludeTypes: z.array(StepTypeSchema).default(['info', 'result']),
+        storeRawAnswers: z.boolean().default(false),
+        allowAnswerKinds: z.boolean().default(true),
       })
       .passthrough()
       .default({}),
   })
-  .passthrough()
-  .default({});
-export type Settings = z.infer<typeof SettingsSchema>;
-
-export const EventsConfigSchema = z
-  .object({
-    allowed: z.array(z.string().min(1)).min(1),
-  })
   .passthrough();
+export type EventsConfig = z.infer<typeof EventsConfigSchema>;
 
 // ---------- Root ----------
 
 export const FunnelConfigSchema = z
   .object({
+    schemaVersion: z.string().optional(),
     funnelId: z.string().min(1),
-    /** Opaque version label; versions are NOT assumed to be sequential. */
-    version: z.string().min(1),
+    /** Number or string. Versions are NOT assumed to be sequential (v2 may never exist). */
+    version: z.union([z.number().int().nonnegative(), z.string().min(1)]),
     status: z.enum(['draft', 'published', 'archived']).optional(),
-    name: z.string().optional(),
+    locale: z.string().optional(),
+    title: z.string().optional(),
     description: z.string().optional(),
-    settings: SettingsSchema,
+    releaseNote: z.string().optional(),
+    session: SessionSettingsSchema,
+    progress: ProgressSettingsSchema,
     experiment: ExperimentSchema,
-    steps: z.array(StepSchema).min(1),
-    results: z.array(ResultSchema).min(1),
+    steps: z.record(StepSchema),
     resultRules: z.array(ResultRuleSchema).default([]),
     defaultResultId: z.string().min(1),
+    results: z.record(ResultSchema),
     events: EventsConfigSchema,
   })
   .passthrough()
   .superRefine((cfg, ctx) => {
-    const stepIds = new Set(cfg.steps.map((s) => s.id));
-    const resultIds = new Set(cfg.results.map((r) => r.id));
+    const stepIds = new Set(Object.keys(cfg.steps));
+    const resultIds = new Set(Object.keys(cfg.results));
 
+    for (const [key, step] of Object.entries(cfg.steps)) {
+      if (step.id !== key) ctx.addIssue({ code: 'custom', path: ['steps', key, 'id'], message: `Step key "${key}" does not match id "${step.id}"` });
+    }
+    for (const [key, r] of Object.entries(cfg.results)) {
+      if (r.id !== key) ctx.addIssue({ code: 'custom', path: ['results', key, 'id'], message: `Result key "${key}" does not match id "${r.id}"` });
+    }
     if (!resultIds.has(cfg.defaultResultId)) {
       ctx.addIssue({ code: 'custom', path: ['defaultResultId'], message: `Unknown result "${cfg.defaultResultId}"` });
     }
@@ -196,33 +259,31 @@ export const FunnelConfigSchema = z
         ctx.addIssue({ code: 'custom', path: ['resultRules', i, 'resultId'], message: `Unknown result "${rule.resultId}"` });
       }
     });
-    cfg.experiment.variants.forEach((v, vi) => {
-      v.stepSequence?.forEach((id, si) => {
+    const variantEntries = Object.entries(cfg.experiment.variants);
+    if (variantEntries.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['experiment', 'variants'], message: 'At least one variant is required' });
+    }
+    for (const [vid, v] of variantEntries) {
+      v.stepSequence.forEach((id, si) => {
         if (!stepIds.has(id)) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['experiment', 'variants', vi, 'stepSequence', si],
-            message: `Unknown step "${id}"`,
-          });
+          ctx.addIssue({ code: 'custom', path: ['experiment', 'variants', vid, 'stepSequence', si], message: `Unknown step "${id}"` });
         }
       });
-      for (const id of Object.keys(v.stepOverrides ?? {})) {
-        if (!stepIds.has(id)) {
-          ctx.addIssue({ code: 'custom', path: ['experiment', 'variants', vi, 'stepOverrides', id], message: `Unknown step "${id}"` });
-        }
+      for (const id of Object.keys(v.stepOverrides)) {
+        if (!stepIds.has(id)) ctx.addIssue({ code: 'custom', path: ['experiment', 'variants', vid, 'stepOverrides', id], message: `Unknown step "${id}"` });
       }
-      for (const id of Object.keys(v.resultOverrides ?? {})) {
+      for (const id of Object.keys(v.resultOverrides)) {
         if (id !== '*' && !resultIds.has(id)) {
-          ctx.addIssue({ code: 'custom', path: ['experiment', 'variants', vi, 'resultOverrides', id], message: `Unknown result "${id}"` });
+          ctx.addIssue({ code: 'custom', path: ['experiment', 'variants', vid, 'resultOverrides', id], message: `Unknown result "${id}"` });
         }
       }
-    });
-    const totalWeight = cfg.experiment.variants.reduce((s, v) => s + v.weight, 0);
-    if (totalWeight <= 0) {
-      ctx.addIssue({ code: 'custom', path: ['experiment', 'variants'], message: 'Variant weights must sum to a positive number' });
+      if (!v.stepSequence.some((id) => cfg.steps[id]?.type === 'result')) {
+        ctx.addIssue({ code: 'custom', path: ['experiment', 'variants', vid, 'stepSequence'], message: 'Variant must end with a "result" step' });
+      }
     }
-    if (cfg.steps.filter((s) => s.type === 'result').length !== 1) {
-      ctx.addIssue({ code: 'custom', path: ['steps'], message: 'Config must contain exactly one step of type "result"' });
+    const totalWeight = variantEntries.reduce((s, [, v]) => s + v.weight, 0);
+    if (variantEntries.length > 0 && totalWeight <= 0) {
+      ctx.addIssue({ code: 'custom', path: ['experiment', 'variants'], message: 'Variant weights must sum to a positive number' });
     }
   });
 
@@ -234,4 +295,13 @@ export function parseFunnelConfig(input: unknown): FunnelConfig {
 
 export function safeParseFunnelConfig(input: unknown) {
   return FunnelConfigSchema.safeParse(input);
+}
+
+/** Canonical string form of the version (DB key, URLs, analytics). */
+export function versionKey(config: Pick<FunnelConfig, 'version'>): string {
+  return String(config.version);
+}
+
+export function allowedEventNames(config: Pick<FunnelConfig, 'events'>): string[] {
+  return config.events.allowed.map((e) => e.name);
 }

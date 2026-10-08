@@ -12,6 +12,8 @@ import {
   evaluateCondition,
   validateAnswer,
   pickVariant,
+  versionKey,
+  allowedEventNames,
 } from './index.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -20,52 +22,81 @@ const v1 = parseFunnelConfig(JSON.parse(readFileSync(path.join(here, '../../../c
 describe('condition engine', () => {
   it('supports eq / in / contains / gte', () => {
     const a = { work_mode: 'hybrid', priorities: ['speed', 'compliance'], team_size: 20 };
-    expect(evaluateCondition({ op: 'eq', field: 'work_mode', value: 'hybrid' }, a)).toBe(true);
-    expect(evaluateCondition({ op: 'eq', field: 'work_mode', value: 'remote' }, a)).toBe(false);
-    expect(evaluateCondition({ op: 'in', field: 'work_mode', value: ['hybrid', 'office'] }, a)).toBe(true);
-    expect(evaluateCondition({ op: 'contains', field: 'priorities', value: 'compliance' }, a)).toBe(true);
-    expect(evaluateCondition({ op: 'contains', field: 'priorities', value: 'cost' }, a)).toBe(false);
-    expect(evaluateCondition({ op: 'gte', field: 'team_size', value: 20 }, a)).toBe(true);
-    expect(evaluateCondition({ op: 'gte', field: 'team_size', value: 21 }, a)).toBe(false);
+    expect(evaluateCondition({ answer: 'work_mode', operator: 'eq', value: 'hybrid' }, a)).toBe(true);
+    expect(evaluateCondition({ answer: 'work_mode', operator: 'eq', value: 'remote' }, a)).toBe(false);
+    expect(evaluateCondition({ answer: 'work_mode', operator: 'in', value: ['hybrid', 'office'] }, a)).toBe(true);
+    expect(evaluateCondition({ answer: 'priorities', operator: 'contains', value: 'compliance' }, a)).toBe(true);
+    expect(evaluateCondition({ answer: 'priorities', operator: 'contains', value: 'cost' }, a)).toBe(false);
+    expect(evaluateCondition({ answer: 'team_size', operator: 'gte', value: 20 }, a)).toBe(true);
+    expect(evaluateCondition({ answer: 'team_size', operator: 'gte', value: 21 }, a)).toBe(false);
   });
 
   it('missing answers never match', () => {
-    expect(evaluateCondition({ op: 'eq', field: 'x', value: undefined }, {})).toBe(false);
-    expect(evaluateCondition({ op: 'gte', field: 'x', value: 0 }, {})).toBe(false);
-    expect(evaluateCondition({ op: 'contains', field: 'x', value: 'a' }, {})).toBe(false);
+    expect(evaluateCondition({ answer: 'x', operator: 'eq', value: undefined }, {})).toBe(false);
+    expect(evaluateCondition({ answer: 'x', operator: 'gte', value: 0 }, {})).toBe(false);
+    expect(evaluateCondition({ answer: 'x', operator: 'contains', value: 'a' }, {})).toBe(false);
+    expect(evaluateCondition({ answer: 'x', operator: 'in', value: ['a'] }, {})).toBe(false);
   });
 
-  it('nests all/any', () => {
-    const cond = {
-      op: 'any' as const,
-      conditions: [
-        { op: 'eq' as const, field: 'a', value: 1 },
-        { op: 'all' as const, conditions: [{ op: 'eq' as const, field: 'b', value: 2 }, { op: 'gte' as const, field: 'c', value: 3 }] },
-      ],
-    };
-    expect(evaluateCondition(cond, { b: 2, c: 3 })).toBe(true);
-    expect(evaluateCondition(cond, { b: 2, c: 2 })).toBe(false);
-    expect(evaluateCondition(cond, { a: 1 })).toBe(true);
+  it('nests all/any (the async_native rule from v1)', () => {
+    const rule = v1.resultRules.find((r) => r.resultId === 'async_native')!.when;
+    expect(evaluateCondition(rule, { work_mode: 'remote', timezone_span: 'global' })).toBe(true);
+    expect(evaluateCondition(rule, { work_mode: 'remote', timezone_span: 'same' })).toBe(false);
+    expect(evaluateCondition(rule, { work_mode: 'office', async_maturity: 'high' })).toBe(true);
+    expect(evaluateCondition(rule, {})).toBe(false);
+  });
+});
+
+describe('config parsing', () => {
+  it('reads the official format: numeric version, keyed steps/results/variants, event objects', () => {
+    expect(v1.version).toBe(1);
+    expect(versionKey(v1)).toBe('1');
+    expect(Object.keys(v1.steps)).toHaveLength(9);
+    expect(Object.keys(v1.experiment.variants)).toEqual(['A', 'B']);
+    expect(allowedEventNames(v1)).toEqual(['session_started', 'step_viewed', 'answer_submitted', 'step_completed', 'back_clicked', 'result_viewed', 'cta_clicked']);
+    expect(v1.events.privacy.storeRawAnswers).toBe(false);
+    expect(v1.session.ttlHours).toBe(72);
+  });
+
+  it('rejects dangling references and key/id mismatches', () => {
+    const broken = JSON.parse(JSON.stringify(v1));
+    broken.defaultResultId = 'nope';
+    expect(() => parseFunnelConfig(broken)).toThrow(/Unknown result/);
+    const mismatch = JSON.parse(JSON.stringify(v1));
+    mismatch.steps.team_size.id = 'other';
+    expect(() => parseFunnelConfig(mismatch)).toThrow(/does not match/);
+    const badSeq = JSON.parse(JSON.stringify(v1));
+    badSeq.experiment.variants.A.stepSequence.push('ghost');
+    expect(() => parseFunnelConfig(badSeq)).toThrow(/Unknown step/);
   });
 });
 
 describe('variant resolution', () => {
-  it('applies step order, text and result overrides', () => {
+  it('applies step order, content and result overrides', () => {
     const a = resolveFunnel(v1, 'A');
     const b = resolveFunnel(v1, 'B');
-    expect(a.steps.map((s) => s.id)).toEqual(['intro', 'team_size', 'work_mode', 'office_days', 'priorities', 'tool_count', 'result']);
-    expect(b.steps.map((s) => s.id)).toEqual(['intro', 'work_mode', 'office_days', 'team_size', 'priorities', 'tool_count', 'result']);
-    expect(b.steps[0]!.title).not.toEqual(a.steps[0]!.title);
+    expect(a.steps.map((s) => s.id)).toEqual(['intro', 'team_size', 'work_mode', 'priorities', 'timezone_span', 'office_days', 'async_maturity', 'tool_count', 'result']);
+    expect(b.steps.map((s) => s.id)).toEqual(['intro', 'work_mode', 'timezone_span', 'team_size', 'async_maturity', 'priorities', 'office_days', 'tool_count', 'result']);
+    expect(b.steps[0]!.content.title).toBe('How should your team really work?');
+    expect(b.steps[0]!.content.primaryActionLabel).toBe('Show me');
     expect(b.steps[0]!.type).toBe('info');
-    expect(b.results.every((r) => r.cta.label === 'Get my 30-day plan')).toBe(true);
-    expect(a.results.every((r) => r.cta.label !== 'Get my 30-day plan')).toBe(true);
-    // base result url preserved by deep merge
-    expect(b.results[0]!.cta.url).toBe(a.results[0]!.cta.url);
+    // override of `content.title` keeps the base helperText (deep merge)
+    const prioB = b.steps.find((s) => s.id === 'priorities')!;
+    expect(prioB.content.title).toBe('What would make the biggest difference right now?');
+    expect(prioB.input?.options).toHaveLength(5);
+    // result overrides: new title + cta label, summary/recommendations preserved
+    const asyncB = b.results.find((r) => r.id === 'async_native')!;
+    const asyncA = a.results.find((r) => r.id === 'async_native')!;
+    expect(asyncB.title).toBe('Your team is ready to reduce meetings');
+    expect(asyncB.cta.label).toBe('See the 30-day action list');
+    expect(asyncB.cta.action).toBe('expand_recommendation');
+    expect(asyncB.summary).toBe(asyncA.summary);
+    expect(asyncA.cta.label).toBe('View the action list');
   });
 
   it('pickVariant respects weights', () => {
-    expect(pickVariant(v1, () => 0.1).id).toBe('A');
-    expect(pickVariant(v1, () => 0.9).id).toBe('B');
+    expect(pickVariant(v1, () => 0.1)).toBe('A');
+    expect(pickVariant(v1, () => 0.9)).toBe('B');
   });
 });
 
@@ -80,20 +111,18 @@ describe('visibility, pruning and progress', () => {
   });
 
   it('stale answer of a hidden step is ignored (answered office_days, then switched to remote)', () => {
-    const answers = { team_size: 10, work_mode: 'remote', office_days: 5, priorities: ['speed'], tool_count: 3 };
-    const pruned = pruneAnswers(a, answers);
-    expect(pruned).not.toHaveProperty('office_days');
-    // office-heavy rule must not fire; remote rule wins
-    expect(evaluateResult(a, answers).id).toBe('remote_async');
+    const answers = { team_size: 10, work_mode: 'remote', office_days: 5, priorities: ['speed'], timezone_span: 'same', async_maturity: 'low', tool_count: 3 };
+    expect(pruneAnswers(a, answers)).not.toHaveProperty('office_days');
+    expect(evaluateResult(a, answers).id).toBe('balanced'); // not hybrid/office, not async-native
     const progress = computeProgress(a, answers, 'tool_count');
-    expect(progress.total).toBe(4); // team_size, work_mode, priorities, tool_count
-    expect(progress.current).toBe(4);
+    expect(progress.total).toBe(6); // team_size, work_mode, priorities, timezone_span, async_maturity, tool_count
+    expect(progress.current).toBe(6);
   });
 
   it('progress excludes info/result and counts only visible steps', () => {
-    expect(computeProgress(a, {}, 'intro')).toEqual({ current: 0, total: 4, ratio: 0 });
-    expect(computeProgress(a, { work_mode: 'hybrid' }, 'office_days')).toMatchObject({ current: 3, total: 5 });
-    expect(computeProgress(a, { work_mode: 'hybrid' }, 'result')).toMatchObject({ current: 5, total: 5, ratio: 1 });
+    expect(computeProgress(a, {}, 'intro')).toEqual({ current: 0, total: 6, ratio: 0 });
+    expect(computeProgress(a, { work_mode: 'hybrid' }, 'office_days')).toMatchObject({ current: 5, total: 7 });
+    expect(computeProgress(a, { work_mode: 'hybrid' }, 'result')).toMatchObject({ current: 7, total: 7, ratio: 1 });
   });
 });
 
@@ -101,39 +130,35 @@ describe('validation', () => {
   const a = resolveFunnel(v1, 'A');
   const step = (id: string) => a.steps.find((s) => s.id === id)!;
 
-  it('uses messages from config', () => {
-    expect(validateAnswer(step('team_size'), undefined)?.message).toBe('Please enter your team size');
-    expect(validateAnswer(step('team_size'), 0)?.rule).toBe('min');
-    expect(validateAnswer(step('team_size'), 501)?.rule).toBe('max');
-    expect(validateAnswer(step('team_size'), 2.5)?.rule).toBe('integer');
+  it('uses bounds from input and messages from config', () => {
+    expect(validateAnswer(step('team_size'), undefined)?.message).toBe('Enter the team size.');
+    expect(validateAnswer(step('team_size'), 0)?.message).toBe('The team must have at least one person.');
+    expect(validateAnswer(step('team_size'), 201)?.message).toBe('For this demo, enter a value up to 200.');
+    expect(validateAnswer(step('team_size'), 2.5)?.rule).toBe('step');
     expect(validateAnswer(step('team_size'), 12)).toBeNull();
+    expect(validateAnswer(step('office_days'), 0)).toBeNull(); // min is 0 in the official config
+    expect(validateAnswer(step('office_days'), 6)?.message).toBe('Enter a value from 0 to 5.');
   });
 
   it('checks selections', () => {
     expect(validateAnswer(step('priorities'), [])?.rule).toBe('required');
-    expect(validateAnswer(step('priorities'), ['speed', 'cost', 'quality', 'compliance'])?.rule).toBe('maxSelections');
+    expect(validateAnswer(step('priorities'), ['speed', 'cost', 'focus', 'culture'])?.message).toBe('Choose no more than three priorities.');
     expect(validateAnswer(step('priorities'), ['nope'])?.rule).toBe('option');
     expect(validateAnswer(step('priorities'), ['speed'])).toBeNull();
     expect(validateAnswer(step('work_mode'), 'remote')).toBeNull();
     expect(validateAnswer(step('work_mode'), 'moon')?.rule).toBe('option');
+    expect(validateAnswer(step('work_mode'), undefined)?.message).toBe("Select the team's main work mode.");
   });
 });
 
 describe('result rules', () => {
   const a = resolveFunnel(v1, 'A');
   it('first matching rule wins, otherwise default', () => {
-    expect(evaluateResult(a, { work_mode: 'remote', tool_count: 9 }).id).toBe('remote_tool_sprawl');
-    expect(evaluateResult(a, { work_mode: 'remote', tool_count: 2, priorities: ['compliance'] }).id).toBe('remote_async');
-    expect(evaluateResult(a, { work_mode: 'office', office_days: 5 }).id).toBe('office_first');
-    expect(evaluateResult(a, { work_mode: 'hybrid', office_days: 2, priorities: ['compliance'] }).id).toBe('compliance_focus');
-    expect(evaluateResult(a, { work_mode: 'hybrid', office_days: 2, priorities: ['speed'] }).id).toBe('balanced_team');
-  });
-});
-
-describe('schema', () => {
-  it('rejects dangling references', () => {
-    const broken = JSON.parse(JSON.stringify(v1));
-    broken.defaultResultId = 'nope';
-    expect(() => parseFunnelConfig(broken)).toThrow(/Unknown result/);
+    expect(evaluateResult(a, { work_mode: 'remote', timezone_span: 'wide' }).id).toBe('async_native');
+    expect(evaluateResult(a, { work_mode: 'hybrid', office_days: 2, async_maturity: 'high' }).id).toBe('async_native'); // any-branch
+    expect(evaluateResult(a, { work_mode: 'hybrid', office_days: 2, async_maturity: 'low' }).id).toBe('hybrid_structured');
+    expect(evaluateResult(a, { work_mode: 'office', office_days: 5 }).id).toBe('office_core');
+    expect(evaluateResult(a, { work_mode: 'remote', timezone_span: 'same', async_maturity: 'medium' }).id).toBe('balanced');
+    expect(evaluateResult(a, {}).id).toBe('balanced');
   });
 });

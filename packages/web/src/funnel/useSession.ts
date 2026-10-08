@@ -52,10 +52,8 @@ export function useSession(): SessionState {
     const created = json as SessionResponse;
     localStorage.setItem(SESSION_KEY, created.session.id);
     tracker.bind(created.session.id, created.funnel.allowedEvents);
-    tracker.track('session_started', undefined, {
-      variant_source: created.session.variantSource,
-      experiment_id: created.funnel.experimentId,
-    });
+    // per config: no extra properties; version/variant/experiment/utm are attached server-side from the session
+    tracker.track('session_started');
     return created;
   }, []);
 

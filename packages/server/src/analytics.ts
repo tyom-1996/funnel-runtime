@@ -140,7 +140,7 @@ export class AnalyticsService {
     let sequence: Array<{ id: string; title: string; type: string }> = [];
     try {
       const funnel = resolveFunnel(this.versions.get(version), variant);
-      sequence = funnel.steps.map((s) => ({ id: s.id, title: s.title ?? s.id, type: s.type }));
+      sequence = funnel.steps.map((s) => ({ id: s.id, title: s.content.title ?? s.id, type: s.type }));
     } catch {
       // version/variant unknown to this deployment: fall back to step ids seen in data
       const ids = new Set<string>();

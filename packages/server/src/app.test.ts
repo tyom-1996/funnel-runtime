@@ -12,17 +12,18 @@ const v1raw = JSON.parse(readFileSync(path.join(here, '../../../configs/funnel-v
 /** A fictional later version: non-sequential number, arrives as draft, adds a step + an event. */
 function makeV9() {
   const v9 = JSON.parse(JSON.stringify(v1raw));
-  v9.version = 'v9';
+  v9.version = 9;
   v9.status = 'draft';
   v9.experiment.id = 'exp-v9';
-  v9.steps.splice(5, 0, {
+  v9.steps.meeting_hours = {
     id: 'meeting_hours',
     type: 'number',
-    title: 'Meeting hours per week?',
-    validation: { required: true, min: 0, max: 40 },
-  });
-  for (const v of v9.experiment.variants) v.stepSequence.splice(5, 0, 'meeting_hours');
-  v9.events.allowed.push('recommendation_expanded');
+    content: { title: 'Meeting hours per week?' },
+    input: { min: 0, max: 40, step: 1 },
+    validation: { required: true },
+  };
+  for (const v of Object.values(v9.experiment.variants) as Array<{ stepSequence: string[] }>) v.stepSequence.splice(5, 0, 'meeting_hours');
+  v9.events.allowed.push({ name: 'recommendation_expanded', properties: ['result_id'] });
   return v9;
 }
 
@@ -34,7 +35,7 @@ beforeEach(() => {
   let i = 0;
   ctx = createApp({ dbFile: ':memory:', random: () => (i++ % 2 === 0 ? 0.1 : 0.9) });
   ctx.versions.create(v1raw);
-  ctx.versions.publish('v1');
+  ctx.versions.publish('1');
   api = request(ctx.app);
 });
 
@@ -50,21 +51,21 @@ const ev = (session_id: string, event_type: string, step_id?: string, extra: Rec
 describe('version pinning', () => {
   it('a session keeps its version after a new one is published; new sessions get the new one', async () => {
     const old = await api.post('/api/sessions').send({}).expect(201);
-    expect(old.body.session.funnelVersion).toBe('v1');
+    expect(old.body.session.funnelVersion).toBe('1');
 
     ctx.versions.create(makeV9());
-    ctx.versions.publish('v9');
+    ctx.versions.publish('9');
 
     const again = await api.get(`/api/sessions/${old.body.session.id}`).expect(200);
-    expect(again.body.session.funnelVersion).toBe('v1');
-    expect(again.body.funnel.version).toBe('v1');
+    expect(again.body.session.funnelVersion).toBe('1');
+    expect(again.body.funnel.version).toBe('1');
     expect(again.body.funnel.steps.map((s: { id: string }) => s.id)).not.toContain('meeting_hours');
 
     const fresh = await api.post('/api/sessions').send({}).expect(201);
-    expect(fresh.body.session.funnelVersion).toBe('v9');
+    expect(fresh.body.session.funnelVersion).toBe('9');
     expect(fresh.body.funnel.steps.map((s: { id: string }) => s.id)).toContain('meeting_hours');
 
-    // old session can still progress and be validated against ITS config
+    // old session can still progress and is validated against ITS config
     await api.patch(`/api/sessions/${old.body.session.id}`).send({ answers: { team_size: 5 }, currentStepId: 'work_mode' }).expect(200);
     await api.patch(`/api/sessions/${old.body.session.id}`).send({ answers: { meeting_hours: 5 } }).expect(400);
   });
@@ -72,6 +73,7 @@ describe('version pinning', () => {
   it('answers are validated against the config and stale hidden answers are pruned', async () => {
     const s = (await api.post('/api/sessions?variant=A').send({})).body.session.id;
     await api.patch(`/api/sessions/${s}`).send({ answers: { team_size: 0 } }).expect(400);
+    await api.patch(`/api/sessions/${s}`).send({ answers: { team_size: 2.5 } }).expect(400); // step: 1
     await api.patch(`/api/sessions/${s}`).send({ answers: { work_mode: 'hybrid', office_days: 3 } }).expect(200);
     const changed = await api.patch(`/api/sessions/${s}`).send({ answers: { work_mode: 'remote' } }).expect(200);
     expect(changed.body.session.answers).toEqual({ work_mode: 'remote' });
@@ -92,7 +94,8 @@ describe('A/B assignment', () => {
     const forced = await api.post('/api/sessions?variant=B').send({}).expect(201);
     expect(forced.body.session.variant).toBe('B');
     expect(forced.body.session.variantSource).toBe('override');
-    expect(forced.body.funnel.steps[1].id).toBe('work_mode'); // B order
+    expect(forced.body.funnel.steps[1].id).toBe('work_mode'); // B order (A starts with team_size)
+    expect(forced.body.funnel.steps[0].content.title).toBe('How should your team really work?');
 
     const bogus = await api.post('/api/sessions?variant=Z').send({}).expect(201);
     expect(['A', 'B']).toContain(bogus.body.session.variant);
@@ -102,7 +105,7 @@ describe('A/B assignment', () => {
   it('weights roughly 50/50 with the real RNG', () => {
     const real = createApp({ dbFile: ':memory:' });
     real.versions.create(v1raw);
-    real.versions.publish('v1');
+    real.versions.publish('1');
     const counts = { A: 0, B: 0 };
     for (let i = 0; i < 400; i++) counts[real.sessions.create({}).session.variant as 'A' | 'B']++;
     expect(counts.A).toBeGreaterThan(130);
@@ -139,7 +142,7 @@ describe('event ingestion', () => {
       ])
       .expect(207);
     expect(res.body.results.map((r: { status: string }) => r.status)).toEqual(['accepted', 'rejected', 'rejected', 'rejected', 'accepted']);
-    expect(res.body.results[3].reason).toMatch(/not allowed in version v1/);
+    expect(res.body.results[3].reason).toMatch(/not allowed in version 1/);
     expect(res.body.summary).toEqual({ accepted: 2, duplicate: 0, rejected: 3 });
   });
 
@@ -156,7 +159,7 @@ describe('event ingestion', () => {
     });
     await api.post('/api/events').send([e]).expect(200);
     const row = ctx.db.prepare('SELECT * FROM events WHERE event_id = ?').get(e.event_id) as Record<string, string>;
-    expect(row.funnel_version).toBe('v1');
+    expect(row.funnel_version).toBe('1');
     expect(row.variant).toBe('B');
     expect(row.utm_campaign).toBe('spring');
     expect(row.utm_source).toBe('ads');
@@ -176,14 +179,14 @@ describe('publish and rollback', () => {
 
     ctx.versions.create(makeV9()); // arrives as draft, version number is not sequential
     let list = ctx.versions.list();
-    expect(list.find((v) => v.version === 'v9')?.status).toBe('draft');
-    expect(list.find((v) => v.version === 'v9')?.isActive).toBe(false);
+    expect(list.find((v) => v.version === '9')?.status).toBe('draft');
+    expect(list.find((v) => v.version === '9')?.isActive).toBe(false);
 
-    await api.post('/api/admin/versions/v9/publish').expect(200);
-    expect(ctx.versions.getActiveVersion()).toBe('v9');
+    await api.post('/api/admin/versions/9/publish').expect(200);
+    expect(ctx.versions.getActiveVersion()).toBe('9');
     const onV9 = (await api.post('/api/sessions').send({})).body.session.id;
-    expect((await api.get(`/api/sessions/${onV9}`)).body.session.funnelVersion).toBe('v9');
-    expect((await api.get(`/api/sessions/${onV1}`)).body.session.funnelVersion).toBe('v1');
+    expect((await api.get(`/api/sessions/${onV9}`)).body.session.funnelVersion).toBe('9');
+    expect((await api.get(`/api/sessions/${onV1}`)).body.session.funnelVersion).toBe('1');
 
     // v9-only event works for the v9 session and is rejected for the v1 session
     const r = await api
@@ -193,36 +196,36 @@ describe('publish and rollback', () => {
     expect(r.body.results.map((x: { status: string }) => x.status)).toEqual(['accepted', 'rejected', 'accepted']);
 
     await api.post('/api/admin/rollback').send({}).expect(200);
-    expect(ctx.versions.getActiveVersion()).toBe('v1');
+    expect(ctx.versions.getActiveVersion()).toBe('1');
     list = ctx.versions.list();
-    expect(list.find((v) => v.version === 'v9')?.status).toBe('published'); // it was published once; just not active
-    expect(list.find((v) => v.version === 'v9')?.isActive).toBe(false);
+    expect(list.find((v) => v.version === '9')?.status).toBe('published'); // it was published once; just not active
+    expect(list.find((v) => v.version === '9')?.isActive).toBe(false);
 
     // sessions started on v9 continue on v9 after the rollback; new sessions are on v1
-    expect((await api.get(`/api/sessions/${onV9}`)).body.session.funnelVersion).toBe('v9');
+    expect((await api.get(`/api/sessions/${onV9}`)).body.session.funnelVersion).toBe('9');
     await api.post('/api/events').send([ev(onV9, 'recommendation_expanded', 'result')]).expect(200);
-    expect((await api.post('/api/sessions').send({})).body.session.funnelVersion).toBe('v1');
+    expect((await api.post('/api/sessions').send({})).body.session.funnelVersion).toBe('1');
 
     // analytics still sees both versions
     const analytics = await api.get('/api/analytics').expect(200);
-    expect(analytics.body.versions).toEqual(['v1', 'v9']);
+    expect(analytics.body.versions).toEqual(['1', '9']);
 
     const log = ctx.versions.log();
-    expect(log[0]).toMatchObject({ action: 'rollback', fromVersion: 'v9', toVersion: 'v1' });
-    expect(log[1]).toMatchObject({ action: 'publish', fromVersion: 'v1', toVersion: 'v9' });
+    expect(log[0]).toMatchObject({ action: 'rollback', fromVersion: '9', toVersion: '1' });
+    expect(log[1]).toMatchObject({ action: 'publish', fromVersion: '1', toVersion: '9' });
   });
 
   it('refuses duplicates, unknown versions and invalid configs', async () => {
     await api.post('/api/admin/versions').send(v1raw).expect(409);
-    await api.post('/api/admin/versions/v404/publish').expect(404);
-    await api.post('/api/admin/versions/v1/publish').expect(409); // already active
+    await api.post('/api/admin/versions/404/publish').expect(404);
+    await api.post('/api/admin/versions/1/publish').expect(409); // already active
     const broken = { ...makeV9(), defaultResultId: 'nope' };
     const res = await api.post('/api/admin/versions').send(broken).expect(400);
     expect(res.body.error).toBe('Validation failed');
     // nothing to roll back to on a fresh system with a single publish
     const fresh = createApp({ dbFile: ':memory:' });
     fresh.versions.create(v1raw);
-    fresh.versions.publish('v1');
+    fresh.versions.publish('1');
     expect(() => fresh.versions.rollback()).toThrow(/Nothing to roll back/);
   });
 });
@@ -247,13 +250,14 @@ describe('analytics', () => {
   }
 
   it('counts unique sessions per step, drop-off, completion and CTR; respects filters', async () => {
-    // A: 4 sessions
+    // A order: intro, team_size, work_mode, priorities, timezone_span, office_days, async_maturity, tool_count, result
+    const fullA = ['intro', 'team_size', 'work_mode', 'priorities', 'timezone_span', 'async_maturity', 'tool_count']; // remote → no office_days
     await walk('A', ['intro', 'team_size', 'work_mode'], { dupes: true, shuffle: true }); // dropped at work_mode
-    await walk('A', ['intro', 'team_size', 'work_mode', 'priorities', 'tool_count'], { result: true, cta: true });
-    await walk('A', ['intro', 'team_size', 'work_mode', 'priorities', 'tool_count'], { result: true, campaign: 'c2' });
+    await walk('A', fullA, { result: true, cta: true });
+    await walk('A', fullA, { result: true, campaign: 'c2' });
     await walk('A', ['intro'], { shuffle: true }); // dropped at intro
-    // B: 2 sessions, different order
-    await walk('B', ['intro', 'work_mode', 'team_size', 'priorities', 'tool_count'], { result: true, cta: true, dupes: true });
+    // B order: intro, work_mode, timezone_span, team_size, async_maturity, priorities, office_days, tool_count, result
+    await walk('B', ['intro', 'work_mode', 'timezone_span', 'team_size', 'async_maturity', 'priorities', 'tool_count'], { result: true, cta: true, dupes: true });
     await walk('B', ['intro', 'work_mode'], { campaign: 'c2' });
 
     const all = (await api.get('/api/analytics').expect(200)).body;
@@ -267,21 +271,20 @@ describe('analytics', () => {
     const a = all.segments.find((s: { variant: string }) => s.variant === 'A');
     expect(a.started).toBe(4);
     const step = (id: string) => a.steps.find((s: { stepId: string }) => s.stepId === id);
-    expect(step('intro')).toMatchObject({ viewed: 4, completed: 4, droppedHere: 1 });
+    expect(step('intro')).toMatchObject({ viewed: 4, completed: 4, droppedHere: 1, title: 'Build a work model your team can actually follow' });
     expect(step('team_size')).toMatchObject({ viewed: 3, droppedHere: 0, conversionFromPrev: 0.75 });
     expect(step('work_mode')).toMatchObject({ viewed: 3, droppedHere: 1 });
-    expect(step('office_days')).toMatchObject({ viewed: 0, droppedHere: 0 }); // hidden branch never shown
-    expect(step('priorities').viewed).toBe(2);
-    // denominator = sessions that got past work_mode (2), not "viewed office_days" (0) — the branch was never shown
-    expect(step('priorities').conversionFromPrev).toBe(1);
-    expect(step('office_days').conversionFromPrev).toBeCloseTo(0); // 0 viewed / 3 that reached work_mode
+    expect(step('priorities')).toMatchObject({ viewed: 2, conversionFromPrev: 2 / 3 });
+    expect(step('office_days')).toMatchObject({ viewed: 0, droppedHere: 0, conversionFromPrev: 0 }); // hidden branch never shown
+    // denominator = sessions that got past office_days' POSITION (2), not "viewed office_days" (0)
+    expect(step('async_maturity')).toMatchObject({ viewed: 2, conversionFromPrev: 1 });
     expect(step('result')).toMatchObject({ viewed: 2, droppedHere: 0 });
     expect(a.reachedResult).toBe(2);
     expect(a.ctaClicked).toBe(1);
     expect(a.ctaCtr).toBe(0.5);
 
     const b = all.segments.find((s: { variant: string }) => s.variant === 'B');
-    expect(b.steps.map((s: { stepId: string }) => s.stepId).slice(0, 3)).toEqual(['intro', 'work_mode', 'office_days']);
+    expect(b.steps.map((s: { stepId: string }) => s.stepId).slice(0, 3)).toEqual(['intro', 'work_mode', 'timezone_span']);
     expect(b.started).toBe(2);
     expect(b.ctaCtr).toBe(1);
 
@@ -291,7 +294,7 @@ describe('analytics', () => {
         expect.objectContaining({ variant: 'B', started: 2, reachedResult: 1, ctaClicked: 1 }),
       ]),
     );
-    expect(all.byVersion).toEqual([expect.objectContaining({ version: 'v1', started: 6 })]);
+    expect(all.byVersion).toEqual([expect.objectContaining({ version: '1', started: 6 })]);
 
     const c2 = (await api.get('/api/analytics?utm_campaign=c2').expect(200)).body;
     expect(c2.overview.started).toBe(2);

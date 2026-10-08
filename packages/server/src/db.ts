@@ -22,7 +22,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS funnel_versions (
   version        TEXT PRIMARY KEY,
   funnel_id      TEXT NOT NULL,
-  name           TEXT,
+  title          TEXT,
   status         TEXT NOT NULL DEFAULT 'draft',    -- draft | published | archived
   is_active      INTEGER NOT NULL DEFAULT 0,
   config_json    TEXT NOT NULL,

@@ -1,4 +1,4 @@
-import { parseFunnelConfig, type FunnelConfig, type PublicationLogEntry, type VersionSummary } from '@funnel/shared';
+import { parseFunnelConfig, versionKey, type FunnelConfig, type PublicationLogEntry, type VersionSummary } from '@funnel/shared';
 import type { Db } from './db.js';
 import { nowIso } from './db.js';
 import { HttpError } from './errors.js';
@@ -6,7 +6,7 @@ import { HttpError } from './errors.js';
 interface VersionRow {
   version: string;
   funnel_id: string;
-  name: string | null;
+  title: string | null;
   status: 'draft' | 'published' | 'archived';
   is_active: number;
   config_json: string;
@@ -22,23 +22,24 @@ export class VersionService {
   /** Upload a new version (draft) from raw JSON. Rejects duplicates and invalid configs. */
   create(raw: unknown, opts: { status?: 'draft' | 'published' } = {}): FunnelConfig {
     const config = parseFunnelConfig(raw);
-    const existing = this.db.prepare('SELECT version FROM funnel_versions WHERE version = ?').get(config.version);
-    if (existing) throw new HttpError(409, `Version "${config.version}" already exists`);
+    const key = versionKey(config);
+    const existing = this.db.prepare('SELECT version FROM funnel_versions WHERE version = ?').get(key);
+    if (existing) throw new HttpError(409, `Version "${key}" already exists`);
     this.db
       .prepare(
-        `INSERT INTO funnel_versions(version, funnel_id, name, status, config_json) VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO funnel_versions(version, funnel_id, title, status, config_json) VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(config.version, config.funnelId, config.name ?? null, opts.status ?? 'draft', JSON.stringify(raw));
-    this.cache.set(config.version, config);
+      .run(key, config.funnelId, config.title ?? null, opts.status ?? 'draft', JSON.stringify(raw));
+    this.cache.set(key, config);
     return config;
   }
 
   /** Idempotent helper for bootstrapping: insert if missing, return the stored config. */
   ensure(raw: unknown): FunnelConfig {
     const config = parseFunnelConfig(raw);
-    const row = this.db.prepare('SELECT version FROM funnel_versions WHERE version = ?').get(config.version);
+    const row = this.db.prepare('SELECT version FROM funnel_versions WHERE version = ?').get(versionKey(config));
     if (!row) return this.create(raw);
-    return this.get(config.version);
+    return this.get(versionKey(config));
   }
 
   get(version: string): FunnelConfig {
@@ -139,13 +140,13 @@ export class VersionService {
     return {
       version: r.version,
       funnelId: r.funnel_id,
-      name: r.name,
+      title: r.title,
       status: r.status,
       isActive: r.is_active === 1,
       createdAt: r.created_at,
       publishedAt: r.published_at,
       experimentId: config.experiment.id,
-      stepCount: config.steps.length,
+      stepCount: Object.keys(config.steps).length,
       sessionCount: sessions.c,
     };
   }

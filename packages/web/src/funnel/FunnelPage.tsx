@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  answerKind,
   computeProgress,
   evaluateResult,
   getNextStep,
@@ -7,6 +8,7 @@ import {
   getVisibleSteps,
   normalizeAnswer,
   validateAnswer,
+  visiblePosition,
   type Answers,
   type Step,
 } from '@funnel/shared';
@@ -63,14 +65,16 @@ function FunnelRunner({ data, setData, restart }: RunnerProps) {
   const step: Step = useMemo(() => funnel.steps.find((s) => s.id === stepId)!, [funnel, stepId]);
   const progress = useMemo(() => computeProgress(funnel, answers, stepId), [funnel, answers, stepId]);
   const result = useMemo(() => (step.type === 'result' ? evaluateResult(funnel, answers) : null), [funnel, answers, step]);
-  const canExpand = funnel.allowedEvents.includes('recommendation_expanded');
+  // events not listed in the version's `events.allowed` are never emitted (the server would reject them anyway)
+  const allowed = (name: string) => funnel.allowedEvents.includes(name);
 
   // track the view once per step change (a refresh re-tracks, which is a real repeated view)
   const lastTracked = useRef<string | null>(null);
   useEffect(() => {
     if (lastTracked.current !== stepId) {
       lastTracked.current = stepId;
-      tracker.track('step_viewed', stepId, { step_type: step.type });
+      const pos = visiblePosition(funnel, answers, stepId);
+      tracker.track('step_viewed', stepId, { step_type: step.type, visible_step_index: pos.index, visible_step_count: pos.count });
       if (step.type === 'result') tracker.track('result_viewed', stepId, { result_id: evaluateResult(funnel, answers).id });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,18 +127,18 @@ function FunnelRunner({ data, setData, restart }: RunnerProps) {
       nextAnswers = { ...answers, [step.id]: value };
       setAnswers(nextAnswers);
       // privacy: only the KIND of answer is sent to analytics, never the value
-      tracker.track('answer_submitted', step.id, { answer_kind: step.type });
+      tracker.track('answer_submitted', step.id, { answer_kind: answerKind(step) });
     }
-    tracker.track('step_completed', step.id);
 
     const next = getNextStep(funnel, nextAnswers, step.id);
+    tracker.track('step_completed', step.id, { next_step_id: next?.id ?? null });
     if (next) await goTo(next, nextAnswers);
   };
 
   const handleBack = async () => {
     const prev = getPrevStep(funnel, answers, step.id);
     if (!prev || saving) return;
-    tracker.track('back_clicked', step.id);
+    tracker.track('back_clicked', step.id, { destination_step_id: prev.id });
     await goTo(prev, answers);
   };
 
@@ -145,9 +149,9 @@ function FunnelRunner({ data, setData, restart }: RunnerProps) {
       <div className="card funnel-card">
         <header className="funnel-header">
           <div className="meta">
-            <span className="pill">{funnel.name ?? funnel.funnelId}</span>
+            <span className="pill">{funnel.title ?? funnel.funnelId}</span>
             <span className="pill muted">
-              {funnel.version} · {funnel.variant}
+              v{funnel.version} · {funnel.variant}
             </span>
           </div>
           {progress.total > 0 && step.type !== 'info' && (
@@ -162,24 +166,31 @@ function FunnelRunner({ data, setData, restart }: RunnerProps) {
 
         {step.type === 'result' && result ? (
           <ResultView
+            step={step}
             result={result}
-            canExpand={canExpand}
-            onCta={() => tracker.track('cta_clicked', step.id, { result_id: result.id, cta_label: result.cta.label })}
-            onExpand={() => tracker.track('recommendation_expanded', step.id, { result_id: result.id })}
+            onCta={() => tracker.track('cta_clicked', step.id, { result_id: result.id, action: result.cta.action ?? null })}
+            onExpand={(source) => {
+              if (allowed('recommendation_expanded')) {
+                tracker.track('recommendation_expanded', step.id, { result_id: result.id, action: result.cta.action ?? null, source });
+              }
+            }}
             onRestart={() => void restart()}
+            saving={saving}
+            saveError={saveError}
+            onRetry={() => void persist({ currentStepId: step.id })}
           />
         ) : (
           <form
             className="step"
+            noValidate // validation + messages come from the config, not from the browser
             onSubmit={(e) => {
               e.preventDefault();
               void handleContinue();
             }}
           >
-            {step.type === 'info' && <div className="eyebrow">Welcome</div>}
-            <h1>{step.title}</h1>
-            {step.subtitle && <p className="subtitle">{step.subtitle}</p>}
-            {step.body && <p className="lead">{step.body}</p>}
+            {step.content.eyebrow && <div className="eyebrow">{step.content.eyebrow}</div>}
+            <h1>{step.content.title ?? step.id}</h1>
+            {step.content.body && <p className="lead">{step.content.body}</p>}
 
             <StepInput
               step={step}
@@ -200,14 +211,14 @@ function FunnelRunner({ data, setData, restart }: RunnerProps) {
                 </button>
               )}
               <button type="submit" className="primary" disabled={saving}>
-                {step.ctaLabel ?? 'Continue'}
+                {step.content.primaryActionLabel ?? 'Continue'}
               </button>
             </div>
           </form>
         )}
       </div>
       <p className="footnote muted">
-        Session {session.id.slice(0, 8)} · pinned to {session.funnelVersion} · variant {session.variant}
+        Session {session.id.slice(0, 8)} · pinned to v{session.funnelVersion} · variant {session.variant}
         {session.variantSource === 'override' ? ' (override)' : ''}
       </p>
     </div>

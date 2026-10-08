@@ -5,25 +5,21 @@ export type Answers = Record<string, unknown>;
 /**
  * Condition engine shared by `visibleWhen` and `resultRules`.
  *
- * Semantics (missing answers never match, except `neq`):
+ * Leaf:        { "answer": "work_mode", "operator": "in", "value": ["hybrid", "office"] }
+ * Combinators: { "all": [...] }, { "any": [...] }, { "not": {...} }
+ *
+ * Semantics (a missing answer never matches, except `neq`):
  *  - eq / neq      : strict equality on primitives
- *  - in            : answer is one of `value[]` (for array answers: any element is in value[])
- *  - contains      : array answer contains `value` (string answer: includes substring)
+ *  - in            : answer is one of value[] (array answer: any element is in value[])
+ *  - contains      : array answer contains value (string answer: includes substring)
  *  - gte/gt/lte/lt : numeric comparison; non-numeric answers never match
- *  - all / any     : nested combinators; `all([])` = true, `any([])` = false
- *  - not           : negation
+ *  - all([]) = true, any([]) = false
  */
 export function evaluateCondition(cond: Condition, answers: Answers): boolean {
-  switch (cond.op) {
-    case 'all':
-      return cond.conditions.every((c) => evaluateCondition(c, answers));
-    case 'any':
-      return cond.conditions.some((c) => evaluateCondition(c, answers));
-    case 'not':
-      return !evaluateCondition(cond.condition, answers);
-    default:
-      return evaluateLeaf(cond.op, answers[cond.field], cond.value);
-  }
+  if ('all' in cond) return cond.all.every((c) => evaluateCondition(c, answers));
+  if ('any' in cond) return cond.any.some((c) => evaluateCondition(c, answers));
+  if ('not' in cond) return !evaluateCondition(cond.not, answers);
+  return evaluateLeaf(cond.operator, answers[cond.answer], cond.value);
 }
 
 function evaluateLeaf(op: string, actual: unknown, expected: unknown): boolean {

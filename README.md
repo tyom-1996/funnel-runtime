@@ -12,7 +12,7 @@ Fullstack TypeScript: React + Vite на фронте, Node.js + Express + SQLite
 
 | | |
 |---|---|
-| Публичный URL | _см. раздел «Деплой»_ |
+| Публичный URL | **https://zerdani.com** (Docker на VPS, см. «Деплой») |
 | Воронка | `/` (`/?variant=B` — override варианта, `/?utm_campaign=...` — UTM) |
 | Админка версий | `/admin` |
 | Аналитика | `/dashboard` |
@@ -71,40 +71,54 @@ AGENTS.md             как велась работа с AI-агентами
 
 Полная схема — [`packages/shared/src/schema.ts`](packages/shared/src/schema.ts). Ключевые части:
 
+Формат — тот, что выдан в задании (`configs/funnel-v1.json`, `configs/funnel-v3.json`); схема проверяет его при загрузке.
+
 ```jsonc
 {
   "funnelId": "team-workflow-audit",
-  "version": "v1",                 // произвольная строка; номера НЕ обязаны идти подряд
+  "version": 1,                    // число; в БД/URL/аналитике используется как строка "1"; номера НЕ обязаны идти подряд
   "status": "published",           // подсказка для первичной загрузки; реальный статус живёт в БД
-  "settings": {
-    "persistAnswers": true,        // ответы хранятся в сессии на сервере
-    "sessionTtlHours": 72,
-    "storeRawAnswers": false,      // в события уходит только answer_kind, без значений
-    "progress": { "excludeTypes": ["info", "result"] }
-  },
+  "title": "Find your team's operating style",
+  "session":  { "ttlHours": 72, "persistAnswers": true, "pinVersion": true, "pinExperimentVariant": true },
+  "progress": { "countVisibleOnly": true, "excludeTypes": ["info", "result"] },
   "experiment": {
-    "id": "exp-order-and-copy-v1",
+    "id": "question-order-and-result-framing-v1",
     "overrideQueryParam": "variant",
-    "variants": [
-      { "id": "A", "weight": 50, "stepSequence": ["intro", "team_size", "work_mode", ...] },
-      { "id": "B", "weight": 50, "stepSequence": [...], "stepOverrides": {...}, "resultOverrides": { "*": {...} } }
-    ]
+    "variants": {
+      "A": { "weight": 50, "stepSequence": ["intro", "team_size", "work_mode", ...] },
+      "B": { "weight": 50, "stepSequence": [...],
+             "stepOverrides":   { "intro": { "content": { "title": "...", "primaryActionLabel": "Show me" } } },
+             "resultOverrides": { "balanced": { "title": "...", "cta": { "label": "..." } } } }
+    }
   },
-  "steps": [ { "id": "office_days", "type": "number",
-               "visibleWhen": { "op": "in", "field": "work_mode", "value": ["hybrid", "office"] },
-               "validation": { "required": true, "min": 1, "max": 5, "messages": { "max": "A work week has 5 days" } } }, ... ],
-  "results": [ { "id": "remote_async", "title": "...", "highlights": [...], "cta": { "label": "...", "url": "..." } }, ... ],
-  "resultRules": [ { "when": { "op": "all", "conditions": [...] }, "resultId": "remote_tool_sprawl" }, ... ],
-  "defaultResultId": "balanced_team",
-  "events": { "allowed": ["session_started", "step_viewed", ...] }
+  "steps": {
+    "office_days": { "id": "office_days", "type": "number",
+                     "content":    { "title": "How many office days…?", "helperText": "…" },
+                     "input":      { "name": "office_days", "min": 0, "max": 5, "step": 1, "unit": "days" },
+                     "validation": { "required": true, "messages": { "required": "…", "min": "…", "max": "…" } },
+                     "visibleWhen": { "answer": "work_mode", "operator": "in", "value": ["hybrid", "office"] } },
+    "priorities":  { "type": "multi-select", "input": { "options": [ { "value": "speed", "label": "Decision speed" }, ... ] },
+                     "validation": { "minSelections": 1, "maxSelections": 3 } },
+    "result":      { "type": "result", "content": { "loadingTitle": "…", "errorTitle": "…", "retryLabel": "…" } }
+  },
+  "results": { "balanced": { "id": "balanced", "title": "…", "summary": "…", "recommendations": ["…"],
+                             "cta": { "label": "View the action list", "action": "expand_recommendation" } }, ... },
+  "resultRules": [ { "resultId": "async_native", "when": { "any": [ { "all": [ {...}, {...} ] }, {...} ] } }, ... ],
+  "defaultResultId": "balanced",
+  "events": {
+    "baseProperties": ["event_id", "session_id", "client_timestamp", "funnel_id", "funnel_version", "experiment_id", "variant", "step_id", "utm_*"],
+    "allowed": [ { "name": "step_viewed", "trigger": "…", "properties": ["step_type", "visible_step_index", "visible_step_count"] }, ... ],
+    "privacy": { "storeRawAnswers": false, "allowAnswerKinds": true }
+  }
 }
 ```
 
-- **Типы шагов**: `info`, `single-select`, `multi-select`, `number`, `result`. На каждый тип — один универсальный компонент.
-- **Валидация** целиком из конфига: `required`, `min`/`max`/`integer`, `minSelections`/`maxSelections`; тексты ошибок — `validation.messages`.
-- **Движок условий**: `eq`, `neq`, `in`, `contains`, `gte`, `gt`, `lte`, `lt` и вложенные `all` / `any` / `not`. Один и тот же для `visibleWhen` и `resultRules`. В `resultRules` побеждает первое совпавшее правило, иначе `defaultResultId`. Отсутствующий ответ никогда не матчится.
-- **Вариант** накладывается поверх базовых шагов: `stepSequence` задаёт порядок (и состав!) шагов, `stepOverrides` переопределяет тексты/опции/валидацию, `resultOverrides` — экран результата (`*` — для всех результатов, deep-merge).
-- **Прогресс** считает только видимые шаги минус `excludeTypes`.
+- **Типы шагов**: `info`, `single-select`, `multi-select`, `number`, `result`. На каждый тип — один универсальный компонент; все тексты берутся из `content` (`eyebrow`, `title`, `body`, `helperText`, `primaryActionLabel`), параметры ввода — из `input`.
+- **Валидация** целиком из конфига: `required`, границы `input.min`/`max`/`step` (`step: 1` → целые), `minSelections`/`maxSelections`, значение из `options[].value`; тексты ошибок — `validation.messages` по имени правила. Нативная валидация браузера отключена (`noValidate`), чтобы показывались именно эти тексты. Та же функция валидирует ответ на сервере.
+- **Движок условий**: лист `{ "answer", "operator", "value" }` с операторами `eq`, `neq`, `in`, `contains`, `gte`, `gt`, `lte`, `lt`; группы `all` / `any` / `not` вкладываются на любую глубину. Один и тот же движок для `visibleWhen` и `resultRules`. В `resultRules` побеждает первое совпавшее правило, иначе `defaultResultId`. Отсутствующий ответ никогда не матчится.
+- **Вариант** накладывается поверх базовых шагов: `stepSequence` задаёт порядок (и состав!) шагов, `stepOverrides[id].content` deep-merge'ится в шаг, `resultOverrides[id]` — в результат (`*` — для всех результатов).
+- **Экран результата**: `title` + `summary`; CTA с `action: "expand_recommendation"` раскрывает `recommendations` на месте и даёт события `cta_clicked` и (если версия разрешает) `recommendation_expanded`. `content.loadingTitle` показывается, пока сохраняется переход на результат, `errorTitle`/`retryLabel` — если сохранение не удалось.
+- **Прогресс** считает только видимые шаги минус `progress.excludeTypes`.
 - **Ветвление и «передумал»**: видимость вычисляется последовательно, и шаг видит только ответы видимых шагов перед ним. Если пользователь ответил на `office_days`, вернулся и переключил `work_mode` на `remote`, сервер при сохранении выкидывает ответ `office_days` (`pruneAnswers`). Он не участвует ни в прогрессе, ни в расчёте результата, а при обратном переключении на `hybrid` вопрос задаётся заново.
 
 ---
@@ -151,7 +165,7 @@ AGENTS.md             как велась работа с AI-агентами
   "event_type": "step_viewed",
   "step_id": "work_mode",
   "client_timestamp": "2026-10-08T19:49:04.055Z",
-  "properties": { "step_type": "single-select" }
+  "properties": { "step_type": "single-select", "visible_step_index": 1, "visible_step_count": 8 }
 }
 ```
 
@@ -159,21 +173,21 @@ AGENTS.md             как велась работа с AI-агентами
 
 | Событие | Когда | properties |
 |---|---|---|
-| `session_started` | создана сессия | `variant_source`, `experiment_id` |
-| `step_viewed` | показан шаг (в т.ч. повторно и после refresh) | `step_type` |
+| `session_started` | создана сессия | — (версия, вариант, эксперимент и UTM сервер берёт из сессии) |
+| `step_viewed` | показан шаг (в т.ч. повторно и после refresh) | `step_type`, `visible_step_index`, `visible_step_count` |
 | `answer_submitted` | ответ прошёл валидацию | `answer_kind` — тип ответа, **без значения** |
-| `step_completed` | нажат Continue | — |
-| `back_clicked` | нажат Back | — |
+| `step_completed` | нажат Continue | `next_step_id` |
+| `back_clicked` | нажат Back | `destination_step_id` |
 | `result_viewed` | показан результат | `result_id` |
-| `cta_clicked` | нажат основной CTA | `result_id`, `cta_label` |
-| `recommendation_expanded` | раскрыт блок «Why this recommendation?» на экране результата — **только в v3** (`events.allowed`); для сессий на v1 сервер отвечает `rejected` | `result_id` |
+| `cta_clicked` | нажат основной CTA | `result_id`, `action` |
+| `recommendation_expanded` | список рекомендаций раскрыт по CTA на экране результата — **только в v3** (`events.allowed`); для сессий на v1 сервер отвечает `rejected` | `result_id`, `action`, `source: "cta"` |
 
 Инварианты приёма:
 
 - `event_id` — PRIMARY KEY, вставка через `INSERT OR IGNORE` → повтор даёт `duplicate`, строк не добавляет. Повтор всей пачки после таймаута безопасен.
 - Каждое событие валидируется отдельно; плохое → `rejected` с причиной, остальные сохраняются. Вся пачка — одна транзакция.
 - Клиентская очередь: события копятся, уходят пачками (таймер/размер), неотправленные лежат в `localStorage` и переживают refresh; при ошибке сети пачка с теми же `event_id` отправляется снова.
-- `storeRawAnswers: false` — сервер дополнительно вырезает из `properties` ключи вроде `value`/`answer`, даже если клиент их пришлёт.
+- `events.privacy.storeRawAnswers: false` — сервер дополнительно вырезает из `properties` ключи вроде `value`/`answer`, даже если клиент их пришлёт.
 
 ---
 
@@ -216,7 +230,7 @@ AGENTS.md             как велась работа с AI-агентами
 - Новые сессии создаются только на активной версии. `GET /api/sessions/:id` всегда отдаёт конфиг **версии сессии**, поэтому старые сессии доживают на своём конфиге после публикации новой версии и после отката.
 - Откат — это публикация версии из `publication_log.from_version`, с записью `action = rollback`. Никаких предположений о нумерации версий (v2 может не существовать).
 - Загруженная версия хранится как `draft`, пока её не опубликуют. После отката ранее опубликованная версия остаётся `published`, просто не активна.
-- Валидация при загрузке: zod-схема + ссылочная целостность (`stepSequence` ↔ `steps`, `resultRules` ↔ `results`, ровно один шаг `result`, положительная сумма весов).
+- Валидация при загрузке: zod-схема + ссылочная целостность (ключ ↔ `id` у шагов и результатов, `stepSequence`/`stepOverrides` ↔ `steps`, `resultRules`/`defaultResultId`/`resultOverrides` ↔ `results`, в каждом варианте есть шаг `result`, положительная сумма весов). Незнакомые поля не отбрасываются (`passthrough`) — конфиг можно расширять без правок кода.
 
 ---
 
@@ -232,11 +246,18 @@ AGENTS.md             как велась работа с AI-агентами
 
 ## Деплой
 
-Любой хостинг с Docker и персистентным диском под SQLite (Render, Fly, Railway, свой VPS).
+Публичная инсталляция — **https://zerdani.com**: Docker-контейнер на VPS, перед ним nginx (TLS Let's Encrypt) как reverse proxy на `127.0.0.1:3000`.
+
+```bash
+docker compose up -d --build        # образ из Dockerfile, SQLite в named volume funnel-data, restart: unless-stopped
+docker compose logs -f
+docker compose exec app node packages/server/dist/cli.js list   # CLI админки внутри контейнера
+```
 
 - `Dockerfile` — multi-stage, финальный образ содержит только prod-зависимости сервера, `configs/` и собранный фронт.
-- `render.yaml` — blueprint для Render с диском `/data` и `DB_FILE=/data/funnel.sqlite`.
-- На своём сервере: `npm ci && npm run build && DB_FILE=/var/lib/funnel/funnel.sqlite PORT=3000 npm start` под systemd/pm2, перед ним nginx как reverse proxy.
+- `docker-compose.yml` — порт публикуется только на `127.0.0.1:3000`, данные в volume `/data`.
+- `render.yaml` — blueprint для Render с диском `/data` и `DB_FILE=/data/funnel.sqlite` (альтернатива VPS).
+- Без Docker: `npm ci && npm run build && DB_FILE=/var/lib/funnel/funnel.sqlite PORT=3000 npm start` под systemd/pm2.
 
 Сторонних сервисов нет: аналитика, БД и A/B — свои.
 
@@ -252,19 +273,21 @@ AGENTS.md             как велась работа с AI-агентами
 4. Генератор трафика через HTTP с печатью ожидаемых цифр; ручная проверка в браузере сценария «ответил на `office_days` → назад → remote».
 5. README, Dockerfile, деплой.
 
+**Переход на выданные конфиги.** Первая версия делалась по текстовому описанию из задания с реконструированным JSON. Когда пришли оригинальные `funnel-v1.json`/`funnel-v3.json`, формат оказался другим (числовой `version`, `steps`/`results`/`variants` как объекты по id, `content`/`input`/`validation` у шага, лист условия `{answer, operator, value}`, `events.allowed` с описанием свойств). Схема, резолв варианта, валидация, рендерер, генератор и тесты переведены на этот формат; модель данных и API не изменились — версия в БД хранится строкой (`"1"`, `"3"`).
+
 **Итерация 2 — `funnel-v3.json`**
 
-1. Получен `funnel-v3.json` (`status: draft`, версии v2 нет — система на нумерацию не опирается). Что изменилось:
+1. Получен `funnel-v3.json` (`status: draft`, `version: 3` — версии 2 нет, система на нумерацию не опирается). Что изменилось:
 
    | Требование | В v3 |
    |---|---|
    | новая условная ветка | `security_constraints` показывается, если в `priorities` есть `compliance` |
    | экран удалён для B | `tool_count` отсутствует в `stepSequence` варианта B (в A остаётся) |
-   | новое событие | `recommendation_expanded` — раскрытие деталей на экране результата |
-   | ещё | новый шаг `meeting_hours`, результаты `regulated_scale` и `meeting_heavy`, новый `experiment.id` |
+   | новое событие | `recommendation_expanded` — раскрытие рекомендаций по CTA на экране результата (`result_id`, `action`, `source`) |
+   | ещё | новый шаг `meeting_hours`, опция `compliance` в `priorities`, результаты `regulated_scale` и `meeting_heavy`, новый `experiment.id` |
 
 2. Положен в `configs/`, добавлен тест-сценарий `iteration2.test.ts`. **Код рантайма менять не пришлось**: движок условий, резолв варианта, валидация и приём событий полностью управляются конфигом; схема БД не менялась (конфиг и свойства событий — JSON).
-3. Проверка на живом сервере через CLI и браузер: `upload` → `publish v3` → генератор создаёт трафик на v3 (B без `tool_count`, часть сессий с `security_constraints`, `recommendation_expanded` принимается) → `rollback` → новые сессии снова на v1, сессии v3 продолжают работать, dashboard показывает обе версии, `publication_log` содержит `publish → rollback`.
+3. Проверка на живом сервере через CLI и браузер: `upload` → `publish 3` → генератор создаёт трафик на v3 (B без `tool_count`, часть сессий с `security_constraints`, `recommendation_expanded` принимается) → `rollback` → новые сессии снова на v1, сессии v3 продолжают работать, dashboard показывает обе версии, `publication_log` содержит `publish → rollback`.
 4. Побочная находка при проверке v3: «conversion from prev» вокруг условного шага давала > 100 % (предыдущий шаг видела только часть трафика). Знаменатель заменён на «сессии, дошедшие до предыдущей позиции» — см. правила агрегации.
 5. Обновлены README и AGENTS.md.
 
@@ -277,7 +300,7 @@ AGENTS.md             как велась работа с AI-агентами
 ```bash
 npm run build && npm start                      # v1 активна (bootstrap), v3 лежит как draft
 npm run seed -- --sessions 50                   # трафик на v1
-npm run publish-version -- publish v3           # или кнопка Publish в /admin
+npm run publish-version -- publish 3            # или кнопка Publish в /admin
 npm run seed -- --sessions 50                   # трафик на v3; старые сессии v1 продолжают работать
 npm run publish-version -- rollback             # обратно на v1; сессии, начатые на v3, остаются на v3
 npm run publish-version -- list
