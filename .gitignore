@@ -1,0 +1,28 @@
+# hosting / server-local, not part of the project
+conf/
+zerdani.zip
+*.zip
+
+# dependencies
+node_modules/
+
+# build output
+dist/
+packages/*/dist/
+
+# runtime data
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# env / logs / misc
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+.vite/

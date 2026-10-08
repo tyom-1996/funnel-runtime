@@ -1,0 +1,8 @@
+node_modules
+packages/*/node_modules
+packages/*/dist
+data
+conf
+*.zip
+*.sqlite*
+.git
