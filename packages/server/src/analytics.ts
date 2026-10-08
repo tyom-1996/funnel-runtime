@@ -155,6 +155,8 @@ export class AnalyticsService {
     const viewed = new Array<number>(sequence.length).fill(0);
     const completed = new Array<number>(sequence.length).fill(0);
     const dropped = new Array<number>(sequence.length).fill(0);
+    // sessions whose furthest viewed step is at position >= i (they "got past" position i-1)
+    const reachedAtLeast = new Array<number>(sequence.length).fill(0);
     const unknown = new Set<string>();
 
     for (const f of sessions.values()) {
@@ -175,17 +177,14 @@ export class AnalyticsService {
         if (i !== undefined) completed[i]!++;
       }
       if (!f.resultViewed && furthest >= 0) dropped[furthest]!++;
+      for (let i = 0; i <= furthest; i++) reachedAtLeast[i]!++;
     }
 
     const steps: StepMetric[] = sequence.map((s, i) => {
-      // previous step that was actually shown to someone (conditional steps may have 0 views)
-      let prev: number | null = null;
-      for (let j = i - 1; j >= 0; j--) {
-        if (viewed[j]! > 0) {
-          prev = viewed[j]!;
-          break;
-        }
-      }
+      // Denominator: sessions that got at least as far as the previous position.
+      // Using "position reached" instead of "previous step viewed" keeps the ratio
+      // <= 100% around conditional steps that only part of the traffic sees.
+      const prev = i === 0 ? null : reachedAtLeast[i - 1]!;
       return {
         stepId: s.id,
         title: s.title,
@@ -194,7 +193,7 @@ export class AnalyticsService {
         viewed: viewed[i]!,
         completed: completed[i]!,
         droppedHere: dropped[i]!,
-        conversionFromPrev: prev === null ? null : viewed[i]! / prev,
+        conversionFromPrev: prev === null ? null : ratio(viewed[i]!, prev),
         reachRate: ratio(viewed[i]!, started),
         dropRate: ratio(dropped[i]!, viewed[i]!),
       };

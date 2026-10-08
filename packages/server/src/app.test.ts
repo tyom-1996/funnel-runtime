@@ -272,7 +272,9 @@ describe('analytics', () => {
     expect(step('work_mode')).toMatchObject({ viewed: 3, droppedHere: 1 });
     expect(step('office_days')).toMatchObject({ viewed: 0, droppedHere: 0 }); // hidden branch never shown
     expect(step('priorities').viewed).toBe(2);
-    expect(step('priorities').conversionFromPrev).toBeCloseTo(2 / 3); // relative to work_mode, skipping the never-shown office_days
+    // denominator = sessions that got past work_mode (2), not "viewed office_days" (0) — the branch was never shown
+    expect(step('priorities').conversionFromPrev).toBe(1);
+    expect(step('office_days').conversionFromPrev).toBeCloseTo(0); // 0 viewed / 3 that reached work_mode
     expect(step('result')).toMatchObject({ viewed: 2, droppedHere: 0 });
     expect(a.reachedResult).toBe(2);
     expect(a.ctaClicked).toBe(1);

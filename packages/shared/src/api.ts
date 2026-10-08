@@ -55,7 +55,7 @@ export interface StepMetric {
   completed: number;
   /** Sessions whose furthest step is this one and that never reached the result. */
   droppedHere: number;
-  /** viewed(this) / viewed(nearest preceding step that had views); null for the first step. */
+  /** viewed(this) / sessions that got at least as far as the previous position; null for the first step. Never exceeds 1. */
   conversionFromPrev: number | null;
   /** viewed(this) / started */
   reachRate: number;
