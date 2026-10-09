@@ -149,10 +149,9 @@ function FunnelRunner({ data, setData, restart }: RunnerProps) {
       <div className="card funnel-card">
         <header className="funnel-header">
           <div className="meta">
-            <span className="pill">{funnel.title ?? funnel.funnelId}</span>
-            <span className="pill muted">
-              v{funnel.version} · {funnel.variant}
-            </span>
+            <span className="pill brand">{funnel.title ?? funnel.funnelId}</span>
+            <span className="pill muted">v{funnel.version}</span>
+            <span className="pill muted dot">variant {funnel.variant}</span>
           </div>
           {progress.total > 0 && step.type !== 'info' && (
             <div className="progress" aria-label={`Step ${progress.current} of ${progress.total}`}>

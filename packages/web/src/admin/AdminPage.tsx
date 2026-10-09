@@ -69,8 +69,11 @@ export function AdminPage() {
 
   return (
     <div className="page wide">
-      <div className="row space-between">
-        <h1>Funnel versions</h1>
+      <div className="page-head">
+        <div>
+          <h1>Funnel versions</h1>
+          <p className="sub">Publish a draft to switch new sessions instantly. Running sessions stay on the version they started with.</p>
+        </div>
         <label className="token">
           Admin token
           <input
@@ -89,18 +92,44 @@ export function AdminPage() {
       {error && <div className="banner error">{error}</div>}
       {notice && <div className="banner ok">{notice}</div>}
 
-      <div className="card">
+      <div className="status-strip">
+        <div className="status-tile accent">
+          <div className="label">Active version</div>
+          <div className="value">{active ? `v${active}` : '—'}</div>
+        </div>
+        <div className="status-tile">
+          <div className="label">Versions stored</div>
+          <div className="value">{versions.length}</div>
+        </div>
+        <div className="status-tile">
+          <div className="label">Sessions total</div>
+          <div className="value">{versions.reduce((s, v) => s + v.sessionCount, 0)}</div>
+        </div>
+        <div className="status-tile">
+          <div className="label">Last change</div>
+          <div className="value" style={{ fontSize: '1rem' }}>
+            {log[0] ? (
+              <>
+                <span className={`pill ${log[0].action === 'rollback' ? 'warn' : 'ok'}`}>{log[0].action}</span>
+                <span className="muted small">{fmt(log[0].createdAt)}</span>
+              </>
+            ) : (
+              '—'
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="card flush">
+        <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
               <th>Version</th>
-              <th>Name</th>
+              <th>Title / experiment</th>
               <th>Status</th>
-              <th>Experiment</th>
-              <th>Steps</th>
-              <th>Sessions</th>
-              <th>Created</th>
-              <th>Published</th>
+              <th className="num">Steps</th>
+              <th className="num">Sessions</th>
               <th></th>
             </tr>
           </thead>
@@ -108,47 +137,59 @@ export function AdminPage() {
             {versions.map((v) => (
               <tr key={v.version} className={v.isActive ? 'active-row' : ''}>
                 <td>
-                  <strong>{v.version}</strong> {v.isActive && <span className="pill ok">active</span>}
+                  <strong>v{v.version}</strong> {v.isActive && <span className="pill ok dot">active</span>}
                 </td>
-                <td>{v.title ?? '—'}</td>
-                <td>{v.status}</td>
-                <td className="mono">{v.experimentId}</td>
-                <td>{v.stepCount}</td>
-                <td>{v.sessionCount}</td>
-                <td className="mono">{fmt(v.createdAt)}</td>
-                <td className="mono">{v.publishedAt ? fmt(v.publishedAt) : '—'}</td>
-                <td className="row gap">
+                <td title={`Created ${fmt(v.createdAt)}`}>
+                  <div>{v.title ?? '—'}</div>
+                  <div className="mono muted small truncate" title={v.experimentId}>
+                    {v.experimentId}
+                  </div>
+                </td>
+                <td>
+                  <span className={`pill ${v.status === 'published' ? 'brand' : 'muted'}`}>{v.status}</span>
+                  {v.publishedAt && (
+                    <div className="muted small" title={fmt(v.publishedAt)}>
+                      {fmtDate(v.publishedAt)}
+                    </div>
+                  )}
+                </td>
+                <td className="num">{v.stepCount}</td>
+                <td className="num">{v.sessionCount}</td>
+                <td className="actions-cell">
+                  <div>
                   <button
                     className="ghost small"
                     onClick={() => void api.adminVersion(v.version).then((r) => setPreview({ version: v.version, config: r.config }))}
                   >
-                    View JSON
+                    JSON
                   </button>
                   {!v.isActive && (
-                    <button className="primary small" disabled={busy} onClick={() => void run(`Published ${v.version}`, () => api.adminPublish(v.version))}>
+                    <button className="primary small" disabled={busy} onClick={() => void run(`Published v${v.version}`, () => api.adminPublish(v.version))}>
                       Publish
                     </button>
                   )}
+                  </div>
                 </td>
               </tr>
             ))}
             {versions.length === 0 && (
               <tr>
-                <td colSpan={9} className="muted">
+                <td colSpan={6} className="muted">
                   No versions yet. Upload one below.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-        <div className="row gap" style={{ marginTop: 12 }}>
+        </div>
+        <div className="row gap wrap" style={{ padding: '14px 20px' }}>
           <button
             className="danger"
             disabled={busy || !previousVersion}
-            title={previousVersion ? `Roll back to ${previousVersion}` : 'No previous publication to roll back to'}
-            onClick={() => void run(`Rolled back to ${previousVersion}`, () => api.adminRollback())}
+            title={previousVersion ? `Roll back to v${previousVersion}` : 'No previous publication to roll back to'}
+            onClick={() => void run(`Rolled back to v${previousVersion}`, () => api.adminRollback())}
           >
-            Roll back{previousVersion ? ` to ${previousVersion}` : ''}
+            Roll back{previousVersion ? ` to v${previousVersion}` : ''}
           </button>
           <span className="muted small">
             Publishing switches new sessions immediately. Existing sessions stay pinned to the version they started on.
@@ -159,8 +200,10 @@ export function AdminPage() {
       <div className="grid-2">
         <div className="card">
           <h2>Upload a version</h2>
-          <p className="muted small">Paste a funnel JSON or pick a file. It is stored as a draft until you publish it.</p>
-          <input type="file" accept="application/json,.json" onChange={(e) => void onFile(e.target.files?.[0])} />
+          <p className="muted small">Paste a funnel JSON or pick a file. It is validated against the schema and stored as a draft until you publish it.</p>
+          <label className="file">
+            <input type="file" accept="application/json,.json" onChange={(e) => void onFile(e.target.files?.[0])} />
+          </label>
           <textarea
             rows={12}
             value={uploadText}
@@ -178,10 +221,14 @@ export function AdminPage() {
           {log.length === 0 && <p className="muted">Nothing published yet.</p>}
           <ul className="log">
             {log.map((l) => (
-              <li key={l.id}>
-                <span className={`pill ${l.action === 'rollback' ? 'warn' : 'ok'}`}>{l.action}</span>{' '}
-                <span className="mono">{l.fromVersion ?? '∅'}</span> → <span className="mono">{l.toVersion}</span>{' '}
-                <span className="muted small mono">{fmt(l.createdAt)}</span>
+              <li key={l.id} className={l.action}>
+                <span className={`pill ${l.action === 'rollback' ? 'warn' : 'ok'}`}>{l.action}</span>
+                <span className="mono">{l.fromVersion ? `v${l.fromVersion}` : '∅'}</span>
+                <span className="arrow">→</span>
+                <span className="mono">
+                  <strong>v{l.toVersion}</strong>
+                </span>
+                <time>{fmt(l.createdAt)}</time>
               </li>
             ))}
           </ul>
@@ -190,8 +237,8 @@ export function AdminPage() {
 
       {preview && (
         <div className="card">
-          <div className="row space-between">
-            <h2>{preview.version} — config</h2>
+          <div className="card-head">
+            <h2>v{preview.version} — config</h2>
             <button className="ghost small" onClick={() => setPreview(null)}>
               Close
             </button>
@@ -206,4 +253,8 @@ export function AdminPage() {
 function fmt(iso: string) {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+function fmtDate(iso: string) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 }

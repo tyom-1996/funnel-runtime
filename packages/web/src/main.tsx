@@ -15,7 +15,10 @@ function Nav() {
   );
   return (
     <nav className="nav">
-      <span className="brand">funnel-runtime</span>
+      <Link to="/" className="brand">
+        <span className="brand-mark" aria-hidden />
+        <span>funnel-runtime</span>
+      </Link>
       <div className="nav-links">
         {item('/', 'Funnel')}
         {item('/admin', 'Admin')}
