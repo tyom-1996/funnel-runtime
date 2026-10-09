@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AnalyticsFilters, AnalyticsResponse, FunnelMetrics } from '@funnel/shared';
 import { api } from '../api';
+import { useI18n } from '../i18n';
 
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? '—' : `${(x * 100).toFixed(1)}%`);
 
 export function DashboardPage() {
+  const { t } = useI18n();
   const [filters, setFilters] = useState<AnalyticsFilters>({});
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,14 +36,14 @@ export function DashboardPage() {
     <div className="page wide">
       <div className="page-head">
         <div>
-          <h1>Analytics</h1>
-          <p className="sub">Every number is a count of unique sessions — repeat views, back navigation and duplicate events never inflate it.</p>
+          <h1>{t.dashboard.title}</h1>
+          <p className="sub">{t.dashboard.subtitle}</p>
         </div>
         <div className="filters">
           <label className="select">
-            Version
+            {t.dashboard.version}
             <select value={filters.version ?? ''} onChange={set('version')}>
-              <option value="">all</option>
+              <option value="">{t.common.all}</option>
               {data?.versions.map((v) => (
                 <option key={v} value={v}>
                   {v}
@@ -50,9 +52,9 @@ export function DashboardPage() {
             </select>
           </label>
           <label className="select">
-            Variant
+            {t.dashboard.variant}
             <select value={filters.variant ?? ''} onChange={set('variant')}>
-              <option value="">all</option>
+              <option value="">{t.common.all}</option>
               {data?.variants.map((v) => (
                 <option key={v} value={v}>
                   {v}
@@ -61,9 +63,9 @@ export function DashboardPage() {
             </select>
           </label>
           <label className="select">
-            UTM campaign
+            {t.dashboard.campaign}
             <select value={filters.utm_campaign ?? ''} onChange={set('utm_campaign')}>
-              <option value="">all</option>
+              <option value="">{t.common.all}</option>
               {data?.campaigns.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -72,7 +74,7 @@ export function DashboardPage() {
             </select>
           </label>
           <button className="ghost" onClick={() => void load(filters)} disabled={loading}>
-            Refresh
+            {t.common.refresh}
           </button>
         </div>
       </div>
@@ -82,16 +84,16 @@ export function DashboardPage() {
       {data && (
         <>
           <div className="kpis">
-            <Kpi label="CTA / started" value={pct(data.overview.ctaPerStarted)} sub="primary A/B metric" primary />
-            <Kpi label="Sessions started" value={data.overview.started} />
-            <Kpi label="Reached result" value={data.overview.reachedResult} sub={pct(data.overview.completionRate) + ' of started'} />
-            <Kpi label="CTA clicked" value={data.overview.ctaClicked} sub={pct(data.overview.ctaCtr) + ' CTR of result viewers'} />
-            <Kpi label="Events stored" value={data.overview.totalEvents} sub={`${data.overview.duplicateProtectedEvents} duplicates ignored`} />
+            <Kpi label={t.dashboard.kpiCtaPerStarted} value={pct(data.overview.ctaPerStarted)} sub={t.dashboard.kpiPrimary} primary />
+            <Kpi label={t.dashboard.kpiStarted} value={data.overview.started} />
+            <Kpi label={t.dashboard.kpiReached} value={data.overview.reachedResult} sub={t.dashboard.kpiOfStarted(pct(data.overview.completionRate))} />
+            <Kpi label={t.dashboard.kpiCta} value={data.overview.ctaClicked} sub={t.dashboard.kpiCtr(pct(data.overview.ctaCtr))} />
+            <Kpi label={t.dashboard.kpiEvents} value={data.overview.totalEvents} sub={t.dashboard.kpiDuplicates(data.overview.duplicateProtectedEvents)} />
           </div>
 
           <div className="card flush">
             <div className="card-head tabs-head">
-              <div className="tabs" role="tablist" aria-label="Compare by">
+              <div className="tabs" role="tablist" aria-label={t.dashboard.compareBy}>
                 <button
                   type="button"
                   role="tab"
@@ -99,7 +101,7 @@ export function DashboardPage() {
                   className={compare === 'variant' ? 'tab active' : 'tab'}
                   onClick={() => setCompare('variant')}
                 >
-                  A vs B
+                  {t.dashboard.abTab}
                 </button>
                 <button
                   type="button"
@@ -108,32 +110,27 @@ export function DashboardPage() {
                   className={compare === 'version' ? 'tab active' : 'tab'}
                   onClick={() => setCompare('version')}
                 >
-                  Versions
+                  {t.dashboard.versionsTab}
                 </button>
               </div>
               <p className="muted small">
-                {compare === 'variant'
-                  ? 'Primary metric: share of started sessions that clicked the CTA.'
-                  : 'Sessions are pinned to their version, so each keeps its own numbers after publish/rollback.'}
+                {compare === 'variant' ? t.dashboard.abHint : t.dashboard.versionsHint}
               </p>
             </div>
             <div className="table-wrap" role="tabpanel">
               {compare === 'variant' ? (
-                <CompareTable rows={data.byVariant.map((r) => ({ key: r.variant, ...r }))} keyLabel="Variant" />
+                <CompareTable rows={data.byVariant.map((r) => ({ key: r.variant, ...r }))} keyLabel={t.dashboard.variant} />
               ) : (
-                <CompareTable rows={data.byVersion.map((r) => ({ key: r.version, ...r }))} keyLabel="Version" prefix="v" />
+                <CompareTable rows={data.byVersion.map((r) => ({ key: r.version, ...r }))} keyLabel={t.dashboard.version} prefix="v" />
               )}
             </div>
           </div>
 
-          <h2 className="section-title">Step funnel by version × variant</h2>
-          <p className="muted small">
-            Step order differs between variants (and some steps exist only in some versions), so the funnel is shown per segment. Drop-off is attributed to the
-            furthest step a session saw without reaching the result.
-          </p>
+          <h2 className="section-title">{t.dashboard.stepsTitle}</h2>
+          <p className="muted small">{t.dashboard.stepsHint}</p>
           {data.segments.length === 0 && (
             <div className="card empty">
-              No events yet. Run <code>npm run seed</code> or walk through the funnel.
+              {t.dashboard.emptyBefore} <code>npm run seed</code> {t.dashboard.emptyAfter}
             </div>
           )}
           {data.segments.map((seg) => (
@@ -164,18 +161,19 @@ function CompareTable({
   keyLabel: string;
   prefix?: string;
 }) {
+  const { t } = useI18n();
   const best = rows.reduce((m, r) => Math.max(m, r.ctaPerStarted), 0);
   return (
     <table className="table">
       <thead>
         <tr>
           <th>{keyLabel}</th>
-          <th className="num">Started</th>
-          <th className="num">Result</th>
-          <th className="num">Completion</th>
-          <th className="num">CTA</th>
-          <th className="num">CTA CTR</th>
-          <th className="num">CTA / started</th>
+          <th className="num">{t.dashboard.colStarted}</th>
+          <th className="num">{t.dashboard.colResult}</th>
+          <th className="num">{t.dashboard.colCompletion}</th>
+          <th className="num">{t.dashboard.colCta}</th>
+          <th className="num">{t.dashboard.colCtaCtr}</th>
+          <th className="num">{t.dashboard.colCtaPerStarted}</th>
         </tr>
       </thead>
       <tbody>
@@ -198,7 +196,7 @@ function CompareTable({
         {rows.length === 0 && (
           <tr>
             <td colSpan={7} className="muted">
-              no data
+              {t.common.noData}
             </td>
           </tr>
         )}
@@ -208,23 +206,24 @@ function CompareTable({
 }
 
 function SegmentFunnel({ seg }: { seg: FunnelMetrics }) {
+  const { t } = useI18n();
   const max = Math.max(1, seg.started);
   return (
     <div className="card flush">
       <div className="segment-head">
         <h3>
           <span className="pill brand">v{seg.version}</span>
-          <span className="pill dot">variant {seg.variant}</span>
+          <span className="pill dot">{t.dashboard.segVariant(seg.variant)}</span>
         </h3>
         <div className="segment-stats">
           <span>
-            <b>{seg.started}</b> started
+            <b>{seg.started}</b> {t.dashboard.segStarted}
           </span>
           <span>
-            <b>{seg.reachedResult}</b> reached result ({pct(seg.completionRate)})
+            <b>{seg.reachedResult}</b> {t.dashboard.segReached} ({pct(seg.completionRate)})
           </span>
           <span>
-            <b>{seg.ctaClicked}</b> CTA ({pct(seg.ctaCtr)} CTR)
+            <b>{seg.ctaClicked}</b> {t.dashboard.segCta} ({pct(seg.ctaCtr)} {t.dashboard.ctr})
           </span>
         </div>
       </div>
@@ -233,14 +232,14 @@ function SegmentFunnel({ seg }: { seg: FunnelMetrics }) {
         <thead>
           <tr>
             <th>#</th>
-            <th>Step</th>
-            <th>Type</th>
-            <th className="num">Viewed</th>
-            <th className="num">Reach</th>
-            <th className="num">Conv. from prev</th>
-            <th className="num">Completed</th>
-            <th className="num">Dropped here</th>
-            <th className="num">Drop rate</th>
+            <th>{t.dashboard.colStep}</th>
+            <th>{t.dashboard.colType}</th>
+            <th className="num">{t.dashboard.colViewed}</th>
+            <th className="num">{t.dashboard.colReach}</th>
+            <th className="num">{t.dashboard.colConv}</th>
+            <th className="num">{t.dashboard.colCompleted}</th>
+            <th className="num">{t.dashboard.colDropped}</th>
+            <th className="num">{t.dashboard.colDropRate}</th>
           </tr>
         </thead>
         <tbody>
@@ -271,7 +270,7 @@ function SegmentFunnel({ seg }: { seg: FunnelMetrics }) {
       </div>
       {seg.unknownStepIds.length > 0 && (
         <p className="muted small" style={{ padding: '10px 20px' }}>
-          Events for steps not in this segment's config: {seg.unknownStepIds.join(', ')}
+          {t.dashboard.unknownSteps(seg.unknownStepIds.join(', '))}
         </p>
       )}
     </div>

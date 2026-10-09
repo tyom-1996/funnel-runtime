@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { PublicationLogEntry, VersionSummary } from '@funnel/shared';
 import { api, ApiError, adminToken } from '../api';
+import { useI18n } from '../i18n';
 
 export function AdminPage() {
+  const { t, locale } = useI18n();
+  const fmt = (iso: string) => fmtWith(iso, locale, 'full');
+  const fmtDate = (iso: string) => fmtWith(iso, locale, 'date');
   const [versions, setVersions] = useState<VersionSummary[]>([]);
   const [log, setLog] = useState<PublicationLogEntry[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -46,12 +50,12 @@ export function AdminPage() {
   };
 
   const upload = () =>
-    run('Version uploaded as draft', async () => {
+    run(t.admin.noticeUploaded, async () => {
       let parsed: unknown;
       try {
         parsed = JSON.parse(uploadText);
       } catch {
-        throw new Error('Not valid JSON');
+        throw new Error(t.admin.notJson);
       }
       await api.adminUpload(parsed);
       setUploadText('');
@@ -71,15 +75,15 @@ export function AdminPage() {
     <div className="page wide">
       <div className="page-head">
         <div>
-          <h1>Funnel versions</h1>
-          <p className="sub">Publish a draft to switch new sessions instantly. Running sessions stay on the version they started with.</p>
+          <h1>{t.admin.title}</h1>
+          <p className="sub">{t.admin.subtitle}</p>
         </div>
         <label className="token">
-          Admin token
+          {t.admin.token}
           <input
             type="password"
             value={token}
-            placeholder="not required unless ADMIN_TOKEN is set"
+            placeholder={t.admin.tokenPlaceholder}
             onChange={(e) => {
               setToken(e.target.value);
               adminToken.set(e.target.value);
@@ -94,23 +98,23 @@ export function AdminPage() {
 
       <div className="status-strip">
         <div className="status-tile accent">
-          <div className="label">Active version</div>
+          <div className="label">{t.admin.activeVersion}</div>
           <div className="value">{active ? `v${active}` : '—'}</div>
         </div>
         <div className="status-tile">
-          <div className="label">Versions stored</div>
+          <div className="label">{t.admin.versionsStored}</div>
           <div className="value">{versions.length}</div>
         </div>
         <div className="status-tile">
-          <div className="label">Sessions total</div>
+          <div className="label">{t.admin.sessionsTotal}</div>
           <div className="value">{versions.reduce((s, v) => s + v.sessionCount, 0)}</div>
         </div>
         <div className="status-tile">
-          <div className="label">Last change</div>
+          <div className="label">{t.admin.lastChange}</div>
           <div className="value" style={{ fontSize: '1rem' }}>
             {log[0] ? (
               <>
-                <span className={`pill ${log[0].action === 'rollback' ? 'warn' : 'ok'}`}>{log[0].action}</span>
+                <span className={`pill ${log[0].action === 'rollback' ? 'warn' : 'ok'}`}>{t.admin.action[log[0].action] ?? log[0].action}</span>
                 <span className="muted small">{fmt(log[0].createdAt)}</span>
               </>
             ) : (
@@ -125,11 +129,11 @@ export function AdminPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Version</th>
-              <th>Title / experiment</th>
-              <th>Status</th>
-              <th className="num">Steps</th>
-              <th className="num">Sessions</th>
+              <th>{t.admin.colVersion}</th>
+              <th>{t.admin.colTitle}</th>
+              <th>{t.admin.colStatus}</th>
+              <th className="num">{t.admin.colSteps}</th>
+              <th className="num">{t.admin.colSessions}</th>
               <th></th>
             </tr>
           </thead>
@@ -137,16 +141,16 @@ export function AdminPage() {
             {versions.map((v) => (
               <tr key={v.version} className={v.isActive ? 'active-row' : ''}>
                 <td>
-                  <strong>v{v.version}</strong> {v.isActive && <span className="pill ok dot">active</span>}
+                  <strong>v{v.version}</strong> {v.isActive && <span className="pill ok dot">{t.admin.active}</span>}
                 </td>
-                <td title={`Created ${fmt(v.createdAt)}`}>
+                <td title={t.admin.created(fmt(v.createdAt))}>
                   <div>{v.title ?? '—'}</div>
                   <div className="mono muted small truncate" title={v.experimentId}>
                     {v.experimentId}
                   </div>
                 </td>
                 <td>
-                  <span className={`pill ${v.status === 'published' ? 'brand' : 'muted'}`}>{v.status}</span>
+                  <span className={`pill ${v.status === 'published' ? 'brand' : 'muted'}`}>{t.admin.status[v.status] ?? v.status}</span>
                   {v.publishedAt && (
                     <div className="muted small" title={fmt(v.publishedAt)}>
                       {fmtDate(v.publishedAt)}
@@ -161,11 +165,11 @@ export function AdminPage() {
                     className="ghost small"
                     onClick={() => void api.adminVersion(v.version).then((r) => setPreview({ version: v.version, config: r.config }))}
                   >
-                    JSON
+                    {t.admin.json}
                   </button>
                   {!v.isActive && (
-                    <button className="primary small" disabled={busy} onClick={() => void run(`Published v${v.version}`, () => api.adminPublish(v.version))}>
-                      Publish
+                    <button className="primary small" disabled={busy} onClick={() => void run(t.admin.noticePublished(v.version), () => api.adminPublish(v.version))}>
+                      {t.admin.publish}
                     </button>
                   )}
                   </div>
@@ -175,7 +179,7 @@ export function AdminPage() {
             {versions.length === 0 && (
               <tr>
                 <td colSpan={6} className="muted">
-                  No versions yet. Upload one below.
+                  {t.admin.noVersions}
                 </td>
               </tr>
             )}
@@ -186,21 +190,21 @@ export function AdminPage() {
           <button
             className="danger"
             disabled={busy || !previousVersion}
-            title={previousVersion ? `Roll back to v${previousVersion}` : 'No previous publication to roll back to'}
-            onClick={() => void run(`Rolled back to v${previousVersion}`, () => api.adminRollback())}
+            title={previousVersion ? t.admin.rollBackTo(previousVersion) : t.admin.noRollback}
+            onClick={() => void run(t.admin.noticeRolledBack(previousVersion ?? ''), () => api.adminRollback())}
           >
-            Roll back{previousVersion ? ` to v${previousVersion}` : ''}
+            {previousVersion ? t.admin.rollBackTo(previousVersion) : t.admin.rollBack}
           </button>
           <span className="muted small">
-            Publishing switches new sessions immediately. Existing sessions stay pinned to the version they started on.
+            {t.admin.publishHint}
           </span>
         </div>
       </div>
 
       <div className="grid-2">
         <div className="card">
-          <h2>Upload a version</h2>
-          <p className="muted small">Paste a funnel JSON or pick a file. It is validated against the schema and stored as a draft until you publish it.</p>
+          <h2>{t.admin.uploadTitle}</h2>
+          <p className="muted small">{t.admin.uploadHint}</p>
           <label className="file">
             <input type="file" accept="application/json,.json" onChange={(e) => void onFile(e.target.files?.[0])} />
           </label>
@@ -212,17 +216,17 @@ export function AdminPage() {
             spellCheck={false}
           />
           <button className="primary" disabled={busy || !uploadText.trim()} onClick={() => void upload()}>
-            Upload as draft
+            {t.admin.uploadButton}
           </button>
         </div>
 
         <div className="card">
-          <h2>Publication log</h2>
-          {log.length === 0 && <p className="muted">Nothing published yet.</p>}
+          <h2>{t.admin.logTitle}</h2>
+          {log.length === 0 && <p className="muted">{t.admin.logEmpty}</p>}
           <ul className="log">
             {log.map((l) => (
               <li key={l.id} className={l.action}>
-                <span className={`pill ${l.action === 'rollback' ? 'warn' : 'ok'}`}>{l.action}</span>
+                <span className={`pill ${l.action === 'rollback' ? 'warn' : 'ok'}`}>{t.admin.action[l.action] ?? l.action}</span>
                 <span className="mono">{l.fromVersion ? `v${l.fromVersion}` : '∅'}</span>
                 <span className="arrow">→</span>
                 <span className="mono">
@@ -238,9 +242,9 @@ export function AdminPage() {
       {preview && (
         <div className="card">
           <div className="card-head">
-            <h2>v{preview.version} — config</h2>
+            <h2>{t.admin.configOf(preview.version)}</h2>
             <button className="ghost small" onClick={() => setPreview(null)}>
-              Close
+              {t.common.close}
             </button>
           </div>
           <pre className="json">{JSON.stringify(preview.config, null, 2)}</pre>
@@ -250,11 +254,8 @@ export function AdminPage() {
   );
 }
 
-function fmt(iso: string) {
+function fmtWith(iso: string, locale: string, kind: 'full' | 'date') {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-}
-function fmtDate(iso: string) {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
+  if (Number.isNaN(d.getTime())) return iso;
+  return kind === 'full' ? d.toLocaleString(locale) : d.toLocaleDateString(locale);
 }

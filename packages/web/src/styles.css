@@ -1116,3 +1116,45 @@ textarea {
     width: 100%;
   }
 }
+
+/* ---------- language switch (admin / dashboard) ---------- */
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lang-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.lang-switch .lang {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: none;
+}
+.lang-switch .lang:hover {
+  color: var(--text);
+}
+.lang-switch .lang.active {
+  background: var(--primary);
+  color: #fff;
+}
+@media (max-width: 640px) {
+  .nav-right {
+    gap: 6px;
+  }
+  .lang-switch .lang {
+    padding: 5px 8px;
+  }
+}
