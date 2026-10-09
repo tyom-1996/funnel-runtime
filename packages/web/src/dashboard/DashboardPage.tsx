@@ -248,11 +248,13 @@ function SegmentFunnel({ seg }: { seg: FunnelMetrics }) {
             <tr key={s.stepId} className={s.viewed === 0 ? 'muted' : ''}>
               <td>{s.index + 1}</td>
               <td>
-                <div className="bar-wrap">
-                  <div className="bar" style={{ width: `${(s.viewed / max) * 100}%` }} />
-                  <span>
+                <div className="step-cell">
+                  <div className="step-title">
                     {s.title} <span className="mono muted small">{s.stepId}</span>
-                  </span>
+                  </div>
+                  <div className="bar-track" aria-hidden>
+                    <div className="bar" style={{ width: `${(s.viewed / max) * 100}%` }} />
+                  </div>
                 </div>
               </td>
               <td className="mono small muted">{s.type}</td>

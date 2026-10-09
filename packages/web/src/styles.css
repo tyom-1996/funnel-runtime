@@ -780,24 +780,31 @@ button:disabled {
   color: var(--warn);
   font-weight: 600;
 }
-.funnel-table .bar-wrap {
-  position: relative;
-  padding: 4px 8px;
+.funnel-table .step-cell {
   min-width: 260px;
   white-space: normal;
 }
-.funnel-table .bar {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  background: var(--primary-soft);
-  border-radius: 8px;
-  z-index: 0;
+.funnel-table .step-title {
+  line-height: 1.35;
 }
-.funnel-table .bar-wrap span {
-  position: relative;
-  z-index: 1;
+.funnel-table .step-title .mono {
+  margin-left: 4px;
+}
+.funnel-table .bar-track {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.funnel-table .bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 0.25s ease;
+}
+.funnel-table tr.muted .bar {
+  background: var(--border-strong);
 }
 .funnel-table tr.muted td {
   color: var(--muted);
