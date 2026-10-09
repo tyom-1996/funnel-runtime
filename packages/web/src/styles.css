@@ -215,6 +215,42 @@ small,
 .card-head p {
   margin: 0;
 }
+.card.flush > .card-head.tabs-head {
+  padding: 14px 20px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border);
+  background: #fafbfd;
+}
+.tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #eef0f6;
+}
+.tab {
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.15s, color 0.15s;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab.active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.tabs-head + .table-wrap .table thead th {
+  border-top: 0;
+}
 
 /* ------------------------------------------------------------------ */
 /* Funnel                                                               */

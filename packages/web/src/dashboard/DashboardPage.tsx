@@ -9,6 +9,7 @@ export function DashboardPage() {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [compare, setCompare] = useState<'variant' | 'version'>('variant');
 
   const load = useCallback(async (f: AnalyticsFilters) => {
     setLoading(true);
@@ -88,28 +89,40 @@ export function DashboardPage() {
             <Kpi label="Events stored" value={data.overview.totalEvents} sub={`${data.overview.duplicateProtectedEvents} duplicates ignored`} />
           </div>
 
-          <div className="grid-2">
-            <div className="card flush">
-              <div className="card-head">
-                <div>
-                  <h2>A vs B</h2>
-                  <p className="muted small">Primary metric: share of started sessions that clicked the CTA.</p>
-                </div>
+          <div className="card flush">
+            <div className="card-head tabs-head">
+              <div className="tabs" role="tablist" aria-label="Compare by">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={compare === 'variant'}
+                  className={compare === 'variant' ? 'tab active' : 'tab'}
+                  onClick={() => setCompare('variant')}
+                >
+                  A vs B
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={compare === 'version'}
+                  className={compare === 'version' ? 'tab active' : 'tab'}
+                  onClick={() => setCompare('version')}
+                >
+                  Versions
+                </button>
               </div>
-              <div className="table-wrap">
-                <CompareTable rows={data.byVariant.map((r) => ({ key: r.variant, ...r }))} keyLabel="Variant" />
-              </div>
+              <p className="muted small">
+                {compare === 'variant'
+                  ? 'Primary metric: share of started sessions that clicked the CTA.'
+                  : 'Sessions are pinned to their version, so each keeps its own numbers after publish/rollback.'}
+              </p>
             </div>
-            <div className="card flush">
-              <div className="card-head">
-                <div>
-                  <h2>Versions</h2>
-                  <p className="muted small">Sessions are pinned to their version, so each keeps its own numbers after publish/rollback.</p>
-                </div>
-              </div>
-              <div className="table-wrap">
+            <div className="table-wrap" role="tabpanel">
+              {compare === 'variant' ? (
+                <CompareTable rows={data.byVariant.map((r) => ({ key: r.variant, ...r }))} keyLabel="Variant" />
+              ) : (
                 <CompareTable rows={data.byVersion.map((r) => ({ key: r.version, ...r }))} keyLabel="Version" prefix="v" />
-              </div>
+              )}
             </div>
           </div>
 
